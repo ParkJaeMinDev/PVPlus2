@@ -1,12 +1,22 @@
 ﻿<Window x:Class="PVPlus2.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:PVPlus2"
-        mc:Ignorable="d"
+        xmlns:hc="https://handyorg.github.io/handycontrol"
+        xmlns:views="clr-namespace:PVPlus2.Views"
         Title="MainWindow" Height="450" Width="800">
-    <Grid>
-
-    </Grid>
+    <hc:TabControl IsTabFillEnabled="False" TabItemWidth="120">
+        <hc:TabItem Header="MainPV" IsSelected="True">
+            <views:MainPVView />
+        </hc:TabItem>
+        <hc:TabItem Header="Sample">
+            <hc:SimplePanel Background="{DynamicResource RegionBrush}"/>
+        </hc:TabItem>
+        <hc:TabItem Header="LTFHelper">
+            <hc:SimplePanel/>
+        </hc:TabItem>
+        <hc:TabItem Header="TabTest">
+            <views:TestView />
+        </hc:TabItem>
+    </hc:TabControl>
 </Window>
