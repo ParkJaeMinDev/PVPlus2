@@ -149,8 +149,12 @@
         </Grid>
 
         <Grid Grid.Row="2">
-            <RichTextBox ScrollViewer.VerticalScrollBarVisibility="Auto">
-            </RichTextBox>
+            <TextBox Text="{Binding 로그텍스트, Mode=OneWay}"
+             IsReadOnly="True"
+             AcceptsReturn="True"
+             TextWrapping="Wrap"
+             VerticalScrollBarVisibility="Auto"
+             HorizontalScrollBarVisibility="Auto" />
         </Grid>
 
     </Grid>
