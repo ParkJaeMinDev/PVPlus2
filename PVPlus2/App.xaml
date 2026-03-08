@@ -10,6 +10,11 @@
                 <hc:ThemeResources/>
                 <hc:Theme/>
             </ResourceDictionary.MergedDictionaries>
+            <!-- DataGrid만 기본 WPF 스타일로 리셋 -->
+            <Style TargetType="DataGrid" BasedOn="{x:Null}" />
+            <Style TargetType="DataGridRow" BasedOn="{x:Null}" />
+            <Style TargetType="DataGridCell" BasedOn="{x:Null}" />
+            <Style TargetType="DataGridColumnHeader" BasedOn="{x:Null}" />
         </ResourceDictionary>
     </Application.Resources>
 </Application>

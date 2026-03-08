@@ -10,10 +10,10 @@
             <views:MainPVView />
         </hc:TabItem>
         <hc:TabItem Header="Sample">
-            <hc:SimplePanel Background="{DynamicResource RegionBrush}"/>
+            <views:SampleView />
         </hc:TabItem>
         <hc:TabItem Header="LTFHelper">
-            <hc:SimplePanel/>
+            <views:LTFHelperView />
         </hc:TabItem>
         <hc:TabItem Header="TabTest">
             <views:TestView />

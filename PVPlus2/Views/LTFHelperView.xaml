@@ -1,0 +1,145 @@
+﻿<UserControl x:Class="PVPlus2.Views.LTFHelperView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:hc="https://handyorg.github.io/handycontrol"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:sys="clr-namespace:System;assembly=mscorlib"
+             xmlns:local="clr-namespace:PVPlus2.Views"
+             mc:Ignorable="d" 
+             d:DesignHeight="450" d:DesignWidth="800"
+             Background="{DynamicResource RegionBrush}">
+    <UserControl.Resources>
+        <x:Array x:Key="PreviewRows" Type="{x:Type sys:Object}">
+            <x:Array Type="{x:Type sys:Object}">
+                <sys:String>샘플-001</sys:String>
+                <sys:Int32>12</sys:Int32>
+                <sys:String>2026-03-01</sys:String>
+            </x:Array>
+            <x:Array Type="{x:Type sys:Object}">
+                <sys:String>샘플-002</sys:String>
+                <sys:Int32>3</sys:Int32>
+                <sys:String>2026-03-01</sys:String>
+            </x:Array>
+            <x:Array Type="{x:Type sys:Object}">
+                <sys:String>샘플-003</sys:String>
+                <sys:Int32>18</sys:Int32>
+                <sys:String>2026-03-02</sys:String>
+            </x:Array>
+            <x:Array Type="{x:Type sys:Object}">
+                <sys:String>샘플-004</sys:String>
+                <sys:Int32>7</sys:Int32>
+                <sys:String>2026-03-02</sys:String>
+            </x:Array>
+            <x:Array Type="{x:Type sys:Object}">
+                <sys:String>샘플-005</sys:String>
+                <sys:Int32>24</sys:Int32>
+                <sys:String>2026-03-03</sys:String>
+            </x:Array>
+            <x:Array Type="{x:Type sys:Object}">
+                <sys:String>샘플-006</sys:String>
+                <sys:Int32>5</sys:Int32>
+                <sys:String>2026-03-03</sys:String>
+            </x:Array>
+            <x:Array Type="{x:Type sys:Object}">
+                <sys:String>샘플-007</sys:String>
+                <sys:Int32>31</sys:Int32>
+                <sys:String>2026-03-04</sys:String>
+            </x:Array>
+            <x:Array Type="{x:Type sys:Object}">
+                <sys:String>샘플-008</sys:String>
+                <sys:Int32>9</sys:Int32>
+                <sys:String>2026-03-05</sys:String>
+            </x:Array>
+            <x:Array Type="{x:Type sys:Object}">
+                <sys:String>샘플-009</sys:String>
+                <sys:Int32>16</sys:Int32>
+                <sys:String>2026-03-06</sys:String>
+            </x:Array>
+            <x:Array Type="{x:Type sys:Object}">
+                <sys:String>샘플-010</sys:String>
+                <sys:Int32>21</sys:Int32>
+                <sys:String>2026-03-07</sys:String>
+            </x:Array>
+        </x:Array>
+    </UserControl.Resources>
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="2*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+        <hc:UniformSpacingPanel Grid.Row="0" Spacing="10" ItemVerticalAlignment="Center">
+            <TextBlock Text="처리방식"/>
+            <ComboBox SelectedIndex="0" Style="{StaticResource ComboBox.Small}">
+                <ComboBoxItem Content="Split"/>
+                <ComboBoxItem Content="Group"/>
+            </ComboBox>
+            <TextBlock Text="구분자"/>
+            <TextBox Text="test1213" Style="{StaticResource TextBox.Small}" />
+            <TextBlock Text="진행상태:"/>
+            <TextBox Text="test1213" IsReadOnly="True" Style="{StaticResource TextBox.Small}" />
+            <Button Content="시작" Style="{StaticResource ButtonPrimary.Small}"/>
+            <Button Content="취소" Style="{StaticResource ButtonDanger.Small}" IsEnabled="False"/>
+        </hc:UniformSpacingPanel>
+        <hc:UniformSpacingPanel Grid.Row="1" Spacing="10" ItemVerticalAlignment="Center">
+            <TextBlock Text="a1"/>
+            <TextBox Text="test1213" Style="{StaticResource TextBox.Small}" />
+            <TextBlock Text="a2"/>
+            <TextBox Text="test1213" Style="{StaticResource TextBox.Small}" />
+            <TextBlock Text="a3"/>
+            <TextBox Text="test1213" Style="{StaticResource TextBox.Small}" />
+            <TextBlock Text="a4"/>
+            <TextBox Text="test1213" Style="{StaticResource TextBox.Small}" />
+            <TextBlock Text="a5"/>
+            <TextBox Text="test1213" Style="{StaticResource TextBox.Small}" />
+            <TextBlock Text="a6"/>
+            <TextBox Text="test1213" Style="{StaticResource TextBox.Small}" />
+            <TextBlock Text="Preset"/>
+            <ComboBox SelectedIndex="0" Style="{StaticResource ComboBox.Small}">
+                <ComboBoxItem Content="프리셋1"/>
+                <ComboBoxItem Content="프리셋2"/>
+            </ComboBox>
+        </hc:UniformSpacingPanel>
+        <hc:UniformSpacingPanel Grid.Row="2" Spacing="10"  ItemVerticalAlignment="Center">
+            <TextBlock Text="SplitBy"/>
+            <TextBox Text="a1" Style="{StaticResource TextBox.Small}" />
+        </hc:UniformSpacingPanel>
+        <!--<DataGrid Grid.Row="3"
+                  AutoGenerateColumns="False"
+                  CanUserAddRows="False"
+                  GridLinesVisibility="Vertical"
+                  IsReadOnly="True"
+                  ItemsSource="{StaticResource PreviewRows}"
+                  Style="{StaticResource DataGrid.Small}"
+                  VerticalGridLinesBrush="{Binding BorderBrush, RelativeSource={RelativeSource Self}}">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="이름" Binding="{Binding [0]}"/>
+                <DataGridTextColumn Header="수량" Binding="{Binding [1]}"/>
+                <DataGridTextColumn Header="등록일" Binding="{Binding [2]}"/>
+            </DataGrid.Columns>
+        </DataGrid>-->
+        <DataGrid Grid.Row="3"
+                  AutoGenerateColumns="False"
+                  CanUserAddRows="False"
+                  IsReadOnly="True"
+                  ItemsSource="{StaticResource PreviewRows}">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="이름" Binding="{Binding [0]}"/>
+                <DataGridTextColumn Header="수량" Binding="{Binding [1]}"/>
+                <DataGridTextColumn Header="등록일" Binding="{Binding [2]}"/>
+            </DataGrid.Columns>
+        </DataGrid>
+        <TextBlock Grid.Row="4" Text="Sample Lines" VerticalAlignment="Center"/>
+        <RichTextBox Grid.Row="5" ScrollViewer.VerticalScrollBarVisibility="Auto">
+        </RichTextBox>
+        <TextBlock Grid.Row="6" Text="Sample Keys" VerticalAlignment="Center"/>
+        <RichTextBox Grid.Row="7" ScrollViewer.VerticalScrollBarVisibility="Auto">
+        </RichTextBox>
+    </Grid>
+</UserControl>

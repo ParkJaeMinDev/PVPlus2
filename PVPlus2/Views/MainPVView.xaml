@@ -66,38 +66,89 @@
                     <TextBlock Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2" Text="상품코드"/>
                     <TextBox   Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" 
                                Text="test1213" IsReadOnly="True" VerticalAlignment="Center" Margin="0,4,0,4" Style="{StaticResource TextBox.Small}" />
-                    <Button    Grid.Row="2" Grid.Column="0" Content="열기" Margin="4" />
-                    <Button    Grid.Row="2" Grid.Column="1" Content="열기" Margin="4" />
-                    <TextBlock Grid.Row="3" Grid.Column="0" Text="이동"/>
-                    <ComboBox  Grid.Row="3" Grid.Column="1" SelectedIndex="0" Style="{StaticResource ComboBox.Small}">
-                        <ComboBoxItem Content=""/>
-                        <ComboBoxItem Content="작업폴더"/>
-                        <ComboBoxItem Content="검증폴더"/>
-                        <ComboBoxItem Content="테이블원본"/>
-                        <ComboBoxItem Content="정상건"/>
-                        <ComboBoxItem Content="오차건"/>
-                        <ComboBoxItem Content="오차건원본"/>
-                        <ComboBoxItem Content="오류건"/>
-                        <ComboBoxItem Content="Sinfo계산값"/>
-                        <ComboBoxItem Content="Sinfo한도계산값"/>
-                    </ComboBox>
+                    <Button    Grid.Row="2" Grid.Column="0" Content="시작" Margin="4" Style="{StaticResource ButtonPrimary}"/>
+                    <Button    Grid.Row="2" Grid.Column="1" Content="취소" Margin="4" Style="{StaticResource ButtonDanger}" IsEnabled="False"/>
+                    <Grid Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="3*"/>
+                            <ColumnDefinition Width="7*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="이동"/>
+                        <ComboBox  Grid.Row="0" Grid.Column="1" SelectedIndex="0" Style="{StaticResource ComboBox.Small}">
+                            <ComboBoxItem Content=""/>
+                            <ComboBoxItem Content="작업폴더"/>
+                            <ComboBoxItem Content="검증폴더"/>
+                            <ComboBoxItem Content="테이블원본"/>
+                            <ComboBoxItem Content="정상건"/>
+                            <ComboBoxItem Content="오차건"/>
+                            <ComboBoxItem Content="오차건원본"/>
+                            <ComboBoxItem Content="오류건"/>
+                            <ComboBoxItem Content="Sinfo계산값"/>
+                            <ComboBoxItem Content="Sinfo한도계산값"/>
+                        </ComboBox>
+                    </Grid>
                 </Grid>
                 
                 <Grid Grid.Column="1">
-                    <TextBlock Text="2"/>
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <Grid Grid.Row="0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="3*"/>
+                                <ColumnDefinition Width="7*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="회사명"/>
+                            <ComboBox  Grid.Column="1" SelectedIndex="0" Style="{StaticResource ComboBox.Small}">
+                                <ComboBoxItem Content=""/>
+                                <ComboBoxItem Content="Hanwha"/>
+                                <ComboBoxItem Content="Hyundai"/>
+                            </ComboBox>
+                        </Grid>
+                        <Grid Grid.Row="1">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="3*"/>
+                                <ColumnDefinition Width="7*"/>
+                            </Grid.ColumnDefinitions>
+                            <CheckBox Grid.Column="0" Content="구분자" />
+                            <TextBox  Grid.Column="1" Text="test1213" IsReadOnly="True" VerticalAlignment="Center" Margin="0,4,0,4" Style="{StaticResource TextBox.Small}" />
+                        </Grid>
+                        <Grid Grid.Row="2">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <CheckBox Grid.Column="0" Content="간이검증" />
+                            <CheckBox Grid.Column="1" Content="라인 요약" />
+                        </Grid>
+                    </Grid>
                 </Grid>
 
                 <Grid Grid.Column="2">
-                    <TextBlock Text="3"/>
+                    <hc:UniformSpacingPanel Spacing="10" Orientation="Vertical">
+                        <RadioButton IsChecked="True" Content="P"/>
+                        <RadioButton Content="V"/>
+                        <RadioButton Content="W"/>
+                    </hc:UniformSpacingPanel>
                 </Grid>
 
                 <Grid Grid.Column="3">
-                    <TextBlock Text="4"/>
+                    <hc:UniformSpacingPanel Spacing="10" Orientation="Vertical">
+                        <Button Content="S비율"/>
+                        <Button Content="신계약비"/>
+                    </hc:UniformSpacingPanel>
                 </Grid>
 
             </Grid>
         </Grid>
 
-        <Border Grid.Row="2" Background="LightBlue" BorderBrush="Black" BorderThickness="1"/>
+        <Grid Grid.Row="2">
+            <RichTextBox ScrollViewer.VerticalScrollBarVisibility="Auto">
+            </RichTextBox>
+        </Grid>
+
     </Grid>
 </UserControl>
