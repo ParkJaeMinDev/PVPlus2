@@ -1,0 +1,10 @@
+﻿{
+  "Version": "v0.2.2",
+  "UpdateFiles": [
+    "PVPlus.exe",
+    "version.json",
+    "ChkExprs.txt",
+    "PV_Template_202507.xlsm",
+    "PVPlus Manual_202507.xlsx"
+  ]
+}

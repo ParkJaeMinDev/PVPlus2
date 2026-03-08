@@ -1,0 +1,342 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProjectGuid>{50588A40-A153-4825-AC5E-9C5210BD186E}</ProjectGuid>
+    <OutputType>WinExe</OutputType>
+    <RootNamespace>PVPlus</RootNamespace>
+    <AssemblyName>PVPlus</AssemblyName>
+    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+    <FileAlignment>512</FileAlignment>
+    <AutoGenerateBindingRedirects>false</AutoGenerateBindingRedirects>
+    <Deterministic>true</Deterministic>
+    <TargetFrameworkProfile />
+    <IsWebBootstrapper>false</IsWebBootstrapper>
+    <PublishUrl>게시\</PublishUrl>
+    <Install>true</Install>
+    <InstallFrom>Disk</InstallFrom>
+    <UpdateEnabled>false</UpdateEnabled>
+    <UpdateMode>Foreground</UpdateMode>
+    <UpdateInterval>7</UpdateInterval>
+    <UpdateIntervalUnits>Days</UpdateIntervalUnits>
+    <UpdatePeriodically>false</UpdatePeriodically>
+    <UpdateRequired>false</UpdateRequired>
+    <MapFileExtensions>true</MapFileExtensions>
+    <ApplicationRevision>0</ApplicationRevision>
+    <ApplicationVersion>0.0.0.0</ApplicationVersion>
+    <UseApplicationTrust>false</UseApplicationTrust>
+    <BootstrapperEnabled>true</BootstrapperEnabled>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+    <Prefer32Bit>false</Prefer32Bit>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+    <DocumentationFile>
+    </DocumentationFile>
+  </PropertyGroup>
+  <PropertyGroup>
+    <StartupObject>
+    </StartupObject>
+  </PropertyGroup>
+  <PropertyGroup>
+    <SignManifests>true</SignManifests>
+  </PropertyGroup>
+  <PropertyGroup>
+    <TargetZone>LocalIntranet</TargetZone>
+  </PropertyGroup>
+  <PropertyGroup>
+    <GenerateManifests>false</GenerateManifests>
+  </PropertyGroup>
+  <PropertyGroup>
+    <ApplicationManifest>Properties\app.manifest</ApplicationManifest>
+  </PropertyGroup>
+  <PropertyGroup>
+    <RunPostBuildEvent>OnBuildSuccess</RunPostBuildEvent>
+  </PropertyGroup>
+  <PropertyGroup>
+    <ApplicationIcon>pv-plus-icon %281%29.ico</ApplicationIcon>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="System" />
+    <Reference Include="System.Configuration" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.IO.Compression.FileSystem" />
+    <Reference Include="System.Windows.Forms" />
+    <Reference Include="System.Xml.Linq" />
+    <Reference Include="System.Data.DataSetExtensions" />
+    <Reference Include="Microsoft.CSharp" />
+    <Reference Include="System.Data" />
+    <Reference Include="System.Net.Http" />
+    <Reference Include="System.Xml" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="helper.cs" />
+    <Compile Include="Properties\Resources.Designer.cs">
+      <AutoGen>True</AutoGen>
+      <DesignTime>True</DesignTime>
+      <DependentUpon>Resources.resx</DependentUpon>
+    </Compile>
+    <Compile Include="PVCALCULATOR\PVCALSubstandard.cs" />
+    <Compile Include="PVCALCULATOR\PVType1.cs" />
+    <Compile Include="PVCALCULATOR\PVCALBase.cs" />
+    <Compile Include="PVCALCULATOR\PVType101.cs" />
+    <Compile Include="PVCALCULATOR\PVType102.cs" />
+    <Compile Include="PVCALCULATOR\PVType103.cs" />
+    <Compile Include="PVCALCULATOR\PVType104.cs" />
+    <Compile Include="PVCALCULATOR\PVType11.cs" />
+    <Compile Include="PVCALCULATOR\PVType12.cs" />
+    <Compile Include="PVCALCULATOR\PVType13.cs" />
+    <Compile Include="PVCALCULATOR\PVType15.cs" />
+    <Compile Include="PVCALCULATOR\PVType16.cs" />
+    <Compile Include="PVCALCULATOR\PVType17.cs" />
+    <Compile Include="PVCALCULATOR\PVType2.cs" />
+    <Compile Include="PVCALCULATOR\PVType3.cs" />
+    <Compile Include="PVCALCULATOR\PVType92.cs" />
+    <Compile Include="PVCALCULATOR\PVType93.cs" />
+    <Compile Include="PVCALCULATOR\PVType94.cs" />
+    <Compile Include="PVCALCULATOR\PVType95.cs" />
+    <Compile Include="PVCALCULATOR\PVType96.cs" />
+    <Compile Include="PVCALCULATOR\PVType97.cs" />
+    <Compile Include="PVCALCULATOR\PVType98.cs" />
+    <Compile Include="PVCALCULATOR\PVType999.cs" />
+    <Compile Include="PVCALCULATOR\PVType11x.cs" />
+    <Compile Include="RULES\ChkExprs.cs" />
+    <Compile Include="RULES\CommutationTable.cs" />
+    <Compile Include="RULES\CompanyRule.cs" />
+    <Compile Include="RULES\Configure.cs" />
+    <Compile Include="RULES\DataReader.cs" />
+    <Compile Include="RULES\Exepense.cs" />
+    <Compile Include="RULES\ExpenseRule.cs" />
+    <Compile Include="RULES\Layout.cs" />
+    <Compile Include="RULES\LineInfo.cs" />
+    <Compile Include="RULES\ProductRule.cs" />
+    <Compile Include="RULES\RateRule.cs" />
+    <Compile Include="RULES\RiderRule.cs" />
+    <Compile Include="RULES\RuleFinder.cs" />
+    <Compile Include="RULES\SInfo.cs" />
+    <Compile Include="RULES\VarChg.cs" />
+    <Compile Include="UI\LTFHelper\LTFHelper.cs" />
+    <Compile Include="UI\LTFHelper\LTFHelperCountOpt.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="UI\LTFHelper\LTFHelperCountOpt.Designer.cs">
+      <DependentUpon>LTFHelperCountOpt.cs</DependentUpon>
+    </Compile>
+    <Compile Include="UI\LTFHelper\LTFHelperDistinctOptForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="UI\LTFHelper\LTFHelperDistinctOptForm.Designer.cs">
+      <DependentUpon>LTFHelperDistinctOptForm.cs</DependentUpon>
+    </Compile>
+    <Compile Include="UI\LTFHelper\LTFHelperFilterOpt.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="UI\LTFHelper\LTFHelperFilterOpt.Designer.cs">
+      <DependentUpon>LTFHelperFilterOpt.cs</DependentUpon>
+    </Compile>
+    <Compile Include="UI\LTFHelper\LTFHelperForm2.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="UI\LTFHelper\LTFHelperForm2.designer.cs">
+      <DependentUpon>LTFHelperForm2.cs</DependentUpon>
+    </Compile>
+    <Compile Include="UI\LTFHelper\LTFHelperGroupOpt_Loop.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="UI\LTFHelper\LTFHelperGroupOpt_Loop.Designer.cs">
+      <DependentUpon>LTFHelperGroupOpt_Loop.cs</DependentUpon>
+    </Compile>
+    <Compile Include="UI\LTFHelper\LTFHelperGroupOpt.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="UI\LTFHelper\LTFHelperGroupOpt.Designer.cs">
+      <DependentUpon>LTFHelperGroupOpt.cs</DependentUpon>
+    </Compile>
+    <Compile Include="UI\LTFHelper\LTFHelperSelectOpt.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="UI\LTFHelper\LTFHelperSelectOpt.designer.cs">
+      <DependentUpon>LTFHelperSelectOpt.cs</DependentUpon>
+    </Compile>
+    <Compile Include="UI\LTFHelper\LTFHelperSortOpt.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="UI\LTFHelper\LTFHelperSortOpt.designer.cs">
+      <DependentUpon>LTFHelperSortOpt.cs</DependentUpon>
+    </Compile>
+    <Compile Include="UI\LTFHelper\LTFHelperSplitOpt.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="UI\LTFHelper\LTFHelperSplitOpt.designer.cs">
+      <DependentUpon>LTFHelperSplitOpt.cs</DependentUpon>
+    </Compile>
+    <Compile Include="UI\MainPVForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="UI\MainPVForm.Designer.cs">
+      <DependentUpon>MainPVForm.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Properties\Settings.Designer.cs">
+      <AutoGen>True</AutoGen>
+      <DesignTimeSharedInput>True</DesignTimeSharedInput>
+      <DependentUpon>Settings.settings</DependentUpon>
+    </Compile>
+    <Compile Include="Program.cs" />
+    <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="PV.cs" />
+    <Compile Include="PVResult.cs" />
+    <Compile Include="UI\MainForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="UI\MainForm.Designer.cs">
+      <DependentUpon>MainForm.cs</DependentUpon>
+    </Compile>
+    <Compile Include="UI\SamplePVForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="UI\SamplePVForm.Designer.cs">
+      <DependentUpon>SamplePVForm.cs</DependentUpon>
+    </Compile>
+    <Compile Include="UI\TextModifier\AIGTextModifier.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="UI\TextModifier\AIGTextModifier.Designer.cs">
+      <DependentUpon>AIGTextModifier.cs</DependentUpon>
+    </Compile>
+    <Compile Include="UI\TextModifier\HanwhaTextModifier.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="UI\TextModifier\HanwhaTextModifier.Designer.cs">
+      <DependentUpon>HanwhaTextModifier.cs</DependentUpon>
+    </Compile>
+    <Compile Include="UI\TextModifier\SamsungTextModifyForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="UI\TextModifier\SamsungTextModifyForm.Designer.cs">
+      <DependentUpon>SamsungTextModifyForm.cs</DependentUpon>
+    </Compile>
+    <Compile Include="UpdateHelper.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Properties\Resources.resx">
+      <Generator>PublicResXFileCodeGenerator</Generator>
+      <LastGenOutput>Resources.Designer.cs</LastGenOutput>
+    </EmbeddedResource>
+    <EmbeddedResource Include="UI\LTFHelper\LTFHelperCountOpt.resx">
+      <DependentUpon>LTFHelperCountOpt.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="UI\LTFHelper\LTFHelperDistinctOptForm.resx">
+      <DependentUpon>LTFHelperDistinctOptForm.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="UI\LTFHelper\LTFHelperFilterOpt.resx">
+      <DependentUpon>LTFHelperFilterOpt.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="UI\LTFHelper\LTFHelperForm2.resx">
+      <DependentUpon>LTFHelperForm2.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="UI\LTFHelper\LTFHelperGroupOpt.resx">
+      <DependentUpon>LTFHelperGroupOpt.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="UI\LTFHelper\LTFHelperGroupOpt_Loop.resx">
+      <DependentUpon>LTFHelperGroupOpt_Loop.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="UI\LTFHelper\LTFHelperSelectOpt.resx">
+      <DependentUpon>LTFHelperSelectOpt.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="UI\LTFHelper\LTFHelperSortOpt.resx">
+      <DependentUpon>LTFHelperSortOpt.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="UI\LTFHelper\LTFHelperSplitOpt.resx">
+      <DependentUpon>LTFHelperSplitOpt.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="UI\MainForm.resx">
+      <DependentUpon>MainForm.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="UI\MainPVForm.resx">
+      <DependentUpon>MainPVForm.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="UI\SamplePVForm.resx">
+      <DependentUpon>SamplePVForm.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="UI\TextModifier\AIGTextModifier.resx">
+      <DependentUpon>AIGTextModifier.cs</DependentUpon>
+      <SubType>Designer</SubType>
+    </EmbeddedResource>
+    <EmbeddedResource Include="UI\TextModifier\HanwhaTextModifier.resx">
+      <DependentUpon>HanwhaTextModifier.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="UI\TextModifier\SamsungTextModifyForm.resx">
+      <DependentUpon>SamsungTextModifyForm.cs</DependentUpon>
+    </EmbeddedResource>
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Flee">
+      <Version>1.2.2</Version>
+    </PackageReference>
+    <PackageReference Include="Newtonsoft.Json">
+      <Version>13.0.3</Version>
+    </PackageReference>
+    <PackageReference Include="Octokit">
+      <Version>13.0.1</Version>
+    </PackageReference>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="app.config" />
+    <None Include="Properties\app.manifest" />
+    <None Include="Properties\Settings.settings">
+      <Generator>SettingsSingleFileGenerator</Generator>
+      <LastGenOutput>Settings.Designer.cs</LastGenOutput>
+    </None>
+    <EmbeddedResource Include="version.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </EmbeddedResource>
+  </ItemGroup>
+  <ItemGroup>
+    <BootstrapperPackage Include=".NETFramework,Version=v4.8">
+      <Visible>False</Visible>
+      <ProductName>Microsoft .NET Framework 4.8%28x86 및 x64%29</ProductName>
+      <Install>true</Install>
+    </BootstrapperPackage>
+    <BootstrapperPackage Include="Microsoft.Net.Framework.3.5.SP1">
+      <Visible>False</Visible>
+      <ProductName>.NET Framework 3.5 SP1</ProductName>
+      <Install>false</Install>
+    </BootstrapperPackage>
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="ChkExprs.txt">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </EmbeddedResource>
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="pv-plus-icon %281%29.ico" />
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  <PropertyGroup>
+    <PostBuildEvent>
+    </PostBuildEvent>
+  </PropertyGroup>
+  <ProjectExtensions>
+    <VisualStudio>
+      <UserProperties version_1json__JsonSchema="https://raw.githubusercontent.com/evg4b/uncors/main/schema.json" />
+    </VisualStudio>
+  </ProjectExtensions>
+</Project>

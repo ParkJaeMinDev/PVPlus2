@@ -1,0 +1,106 @@
+﻿										   회사	조건1	조건2	조건3	조건4	산출항목	산출수식	설명
+Base					NP_UNIT	Eval("NP",n,m,0,Freq)	
+Base					BETANP_UNIT	Eval("BETANP",n,m,0,Freq)	
+Base					STDNP_UNIT	Eval("STDNP",n,m,0,12)	
+Base					STDNP_UNIT	Eval("NP",n,Min(n,20),0,12)	
+Base					GP_UNIT	Eval("GP",n,m,0,Freq)	
+Base		S4>0 OR Freq=99			V_UNIT	Eval("V",n,m,t,Freq)	
+Base		S4=0			V_UNIT	Eval("V",n,m,t,12)	
+Base		S4>0 OR Freq=99			V2_UNIT	RoundA(Eval("V",n,m,t,Freq))	
+Base		S4=0			V2_UNIT	RoundA(Eval("V",n,m,t,12))	저해지의 표준형V
+Base		Freq=0			ALPHA_UNIT	12.0*RoundA(Eval("GP_UNIT",n,m,0,1))*Ex("Alpha_P")+Ex("Alpha_S")	
+Base		Freq>0			ALPHA_UNIT	(12.0/Freq)*RoundA(Eval("GP_UNIT",n,m,0,Freq))*Ex("Alpha_P")+Ex("Alpha_S")	
+Base		S_Type=0			STDALPHA_UNIT	0	
+Base		S_Type=1			STDALPHA_UNIT	(0.05*Min(n,20)+0.45)*Eval("STDNP_UNIT",n,m,0,12)*If(Channel>0, 0.7, 1)	
+Base		S_Type=2			STDALPHA_UNIT	(0.05*Min(n,20)*Eval("STDNP_UNIT",n,m,0,12)+0.01*Eval("Min_S"))*If(Channel>0, 0.7, 1)	
+Base		S_Type=3			STDALPHA_UNIT	(0.05*Min(n,20)+0.15)*Eval("STDNP_UNIT",n,m,0,12)*If(Channel>0, 0.7, 1)	
+Base				t<Min(7,m)	DAC_UNIT	PositiveMin(Eval("ALPHA_UNIT",n,m,0,Freq),Eval("STDALPHA_UNIT",n,m,0,12))*(Min(7,m)-t)/Min(7,m)	
+Base				t>=Min(7,m)	DAC_UNIT	0	
+Base					W_UNIT	PositiveMax(RoundA(Eval("V_UNIT",n,m,t,Freq))-RoundA(Eval("DAC_UNIT",n,m,t,Freq)))	
+Base					NP0	Round2(Eval("NP_UNIT",n,m,0,Freq)*Amount,0)	
+Base					NP1	Round2(Eval("NP_UNIT",n,m,0,99)*Amount,0)	
+Base					NP2	Round2(Eval("NP_UNIT",n,m,0,12)*Amount,0)	
+Base					NP3	Round2(Eval("NP_UNIT",n,m,0,6)*Amount,0)	
+Base					NP4	Round2(Eval("NP_UNIT",n,m,0,3)*Amount,0)	
+Base					NP5	Round2(Eval("NP_UNIT",n,m,0,2)*Amount,0)	
+Base					NP6	Round2(Eval("NP_UNIT",n,m,0,1)*Amount,0)	
+Base					BETANP0	Round2(Eval("BETANP_UNIT",n,m,0,Freq)*Amount,0)	
+Base					BETANP1	Round2(Eval("BETANP_UNIT",n,m,0,99)*Amount,0)	
+Base					BETANP2	Round2(Eval("BETANP_UNIT",n,m,0,12)*Amount,0)	
+Base					BETANP3	Round2(Eval("BETANP_UNIT",n,m,0,6)*Amount,0)	
+Base					BETANP4	Round2(Eval("BETANP_UNIT",n,m,0,3)*Amount,0)	
+Base					BETANP5	Round2(Eval("BETANP_UNIT",n,m,0,2)*Amount,0)	
+Base					BETANP6	Round2(Eval("BETANP_UNIT",n,m,0,1)*Amount,0)	
+Base					STDNP	Round2(Eval("STDNP_UNIT",n,m,0,12)*Amount,0)	
+Base					GP0	Round2(Eval("GP_UNIT",n,m,0,Freq)*Amount,0)	
+Base					GP1	Round2(Eval("GP_UNIT",n,m,0,99)*Amount,0)	
+Base					GP2	Round2(Eval("GP_UNIT",n,m,0,12)*Amount,0)	
+Base					GP3	Round2(Eval("GP_UNIT",n,m,0,6)*Amount,0)	
+Base					GP4	Round2(Eval("GP_UNIT",n,m,0,3)*Amount,0)	
+Base					GP5	Round2(Eval("GP_UNIT",n,m,0,2)*Amount,0)	
+Base					GP6	Round2(Eval("GP_UNIT",n,m,0,1)*Amount,0)	
+Base					V0	Round2(Eval("V_UNIT",n,m,ElapseYear,Freq)*Amount,0)	
+Base					V1	Round2(Eval("V_UNIT",n,m,ElapseYear+1,Freq)*Amount,0)	
+Base					VWhole	Round2(Eval("V_UNIT",n,m,t,Freq)*Amount,0)	
+Base					W0	Round2(Eval("W_UNIT",n,m,ElapseYear,Freq)*Amount,0)	
+Base					W1	Round2(Eval("W_UNIT",n,m,ElapseYear+1,Freq)*Amount,0)	
+Base					WWhole	Round2(Eval("W_UNIT",n,m,t,Freq)*Amount,0)	
+Base					ALPHA	Round2(Eval("ALPHA_UNIT",n,m,t,Freq)*Amount,0)	
+Base					STDALPHA	Round2(Eval("STDALPHA_UNIT",n,m,t,Freq)*Amount,0)	
+Hyundai					DCGP0	Max(Round2(Eval("GP0",n,m,0,Freq)*(1-Ex("가변1")),0), Eval("NP",n,m,0,Freq))	
+Hyundai		S4>0 OR Freq=99			V2_UNIT	Eval("V",n,m,t,Freq)	
+Hyundai		S4=0			V2_UNIT	Eval("V",n,m,t,12)	
+Hyundai					ALPHA_UNIT	(12.0/Freq)*Eval("GP_UNIT",n,m,0,Freq)*Ex("Alpha_P")+Ex("Alpha_S")	납입주기 기준(보험료 계산시 적용)
+Hyundai					ALPHA	Round(((12.0/Freq)*RoundA(Eval("GP_UNIT",n,m,0,Freq))*Ex("Alpha_P")+Ex("Alpha_S"))*Amount, 0)	납입주기 기준(보험료 계산시 적용)
+Hyundai					STDNP_UNIT	RoundDown(Eval("STDNP",n,m,0,12)*Amount,2)/Amount	
+Hyundai				t<Min(7,m)	DAC_UNIT	PositiveMin(Eval("ALPHA_UNIT",n,m,0,Freq),Eval("STDALPHA_UNIT",n,m,0,Freq))*(Min(7,m)-t)/Min(7,m)	
+Hyundai				t>=Min(7,m)	DAC_UNIT	0	
+Hyundai					W_UNIT	PositiveMax(Eval("V_UNIT",n,m,t,Freq)-Eval("DAC_UNIT",n,m,t,Freq))	
+Hyundai		S_Type=1	PV_Type=92		STDALPHA_UNIT	(0.05*m*Eval("NP_UNIT",n,m,0,12)+0.45*Eval("RP",n,m,0,12))*If(Channel>0, 0.7, 1)	무사고 연장형
+Hyundai		S_Type=2	PV_Type=92		STDALPHA_UNIT	(0.05*m*Eval("NP_UNIT",n,m,0,12)+0.01*Eval("Min_S"))*If(Channel>0, 0.7, 1)	무사고 연장형
+Hanwha		S4>0 OR Freq=99			V2_UNIT	RoundA(Eval("V",n,m,t,Freq))	
+Hanwha		S4=0			V2_UNIT	RoundA(Eval("V",n,m,t,12))	
+Hanwha		Freq=0			ALPHA_UNIT	12.0*RoundA(Eval("GP_UNIT",n,m,0,1))*Ex("Alpha_P")+Ex("Alpha_S")	
+Hanwha		Freq>0			ALPHA_UNIT	(12.0/Freq)*RoundA(Eval("GP_UNIT",n,m,0,Freq))*Ex("Alpha_P")+Ex("Alpha_S")	
+Hanwha					STDNP_UNIT	Eval("NP",n,Min(n,20),0,12)	
+Hanwha				t<Min(7,m)	DAC_UNIT	RoundA(Min(Eval("ALPHA_UNIT",n,m,t,Freq),Eval("STDALPHA_UNIT",n,m,t,Freq))*(Min(7,m)-t)/Min(7,m))	
+Hanwha				t>=Min(7,m)	DAC_UNIT	0	
+Hanwha					W_UNIT	PositiveMax(RoundA(Eval("V_UNIT",n,m,t,Freq))-RoundA(Eval("DAC_UNIT",n,m,t,Freq)))	
+Hanwha		S_Type=1	PV_Type=96		STDALPHA_UNIT	RoundDown((0.05*Min(n,Min(F6-Age,20))+0.45)*Eval("NP_UNIT",n,Min(n,Min(F6-Age,20)),t,12)*Amount,0)/Amount	무사고 연장형
+Hanwha		S_Type=2	PV_Type=96		STDALPHA_UNIT	RoundDown((0.05*Min(n,Min(F6-Age,20))*Eval("NP_UNIT",n,Min(n,Min(F6-Age,20)),t,12)+0.01*Eval("Min_S"))*Amount,0)/Amount	무사고 연장형
+Hanwha		S_Type=1			STDALPHA_UNIT	RoundDown((0.05*Min(n,20)+0.45)*Eval("STDNP_UNIT",n,m,t,12)*Amount,0)/Amount	
+Hanwha		S_Type=2			STDALPHA_UNIT	RoundDown((0.05*Min(n,20)*Eval("STDNP_UNIT",n,m,t,12)+0.01*Eval("Min_S"))*Amount,0)/Amount	
+Hanwha		S_Type=3			STDALPHA_UNIT	RoundDown((0.05*Min(n,20)+0.15*Eval("STDNP_UNIT",n,m,t,12))*Amount,0)/Amount	
+Samsung		S_Type=1			STDALPHA_UNIT	(0.05*Min(n,20)+0.45)*RoundA(Eval("STDNP_UNIT",n,m,0,12))*If(Channel>0, 0.7, 1)	삼성 갱신상품
+Samsung		S_Type=2			STDALPHA_UNIT	(0.05*Min(n,20)*RoundA(Eval("STDNP_UNIT",n,m,0,12))+0.01*Eval("Min_S"))*If(Channel>0, 0.7, 1)	삼성 갱신상품
+Samsung		S_Type=3			STDALPHA_UNIT	(0.05*Min(n,20)+0.15)*RoundA(Eval("STDNP_UNIT",n,m,0,12))*If(Channel>0, 0.7, 1)	삼성 갱신상품
+Samsung					NP0	Max(Round2(Eval("NP_UNIT",n,m,0,Freq)*Amount,0),1)	삼성 갱신상품
+Samsung					NP1	Max(Round2(Eval("NP_UNIT",n,m,0,99)*Amount,0),1)	삼성 갱신상품
+Samsung					NP2	Max(Round2(Eval("NP_UNIT",n,m,0,12)*Amount,0),1)	삼성 갱신상품
+Samsung					NP3	Max(Round2(Eval("NP_UNIT",n,m,0,6)*Amount,0),1)	삼성 갱신상품
+Samsung					NP4	Max(Round2(Eval("NP_UNIT",n,m,0,3)*Amount,0),1)	삼성 갱신상품
+Samsung					NP5	Max(Round2(Eval("NP_UNIT",n,m,0,2)*Amount,0),1)	삼성 갱신상품
+Samsung					NP6	Max(Round2(Eval("NP_UNIT",n,m,0,1)*Amount,0),1)	삼성 갱신상품
+Samsung					GP0	Max(Round2(Eval("GP_UNIT",n,m,0,Freq)*Amount,0),1)	삼성 갱신상품
+Samsung					GP1	Max(Round2(Eval("GP_UNIT",n,m,0,99)*Amount,0),1)	삼성 갱신상품
+Samsung					GP2	Max(Round2(Eval("GP_UNIT",n,m,0,12)*Amount,0),1)	삼성 갱신상품
+Samsung					GP3	Max(Round2(Eval("GP_UNIT",n,m,0,6)*Amount,0),1)	삼성 갱신상품
+Samsung					GP4	Max(Round2(Eval("GP_UNIT",n,m,0,3)*Amount,0),1)	삼성 갱신상품
+Samsung					GP5	Max(Round2(Eval("GP_UNIT",n,m,0,2)*Amount,0),1)	삼성 갱신상품
+Samsung					GP6	Max(Round2(Eval("GP_UNIT",n,m,0,1)*Amount,0),1)	삼성 갱신상품
+Post				t<Min(5,m)	DAC_UNIT	Eval("ALPHA_UNIT",n,m,0,Freq)*(Min(5,m)-t)/Min(5,m)	우체국용 임시
+Post				t>=Min(5,m)	DAC_UNIT	0	우체국용 임시
+Heungkuk		S4>0 OR Freq=99			V2_UNIT	RoundA(Eval("V",n,m,t,Freq))	
+Heungkuk		S4=0			V2_UNIT	RoundA(Eval("V",n,m,t,12))	
+Heungkuk		Freq=0			ALPHA_UNIT	12.0*RoundA(Eval("GP_UNIT",n,m,0,1))*Ex("Alpha_P")+Ex("Alpha_S")	
+Heungkuk		Freq>0			ALPHA_UNIT	(12.0/Freq)*RoundA(Eval("GP_UNIT",n,m,0,Freq))*Ex("Alpha_P")+Ex("Alpha_S")	
+Heungkuk					STDNP_UNIT	Eval("NP",n,Min(n,20),0,12)	
+Heungkuk				t<Min(7,m)	DAC_UNIT	RoundA(Min(Eval("ALPHA_UNIT",n,m,t,Freq),Eval("STDALPHA_UNIT",n,m,t,Freq))*(Min(7,m)-t)/Min(7,m))	
+Heungkuk				t>=Min(7,m)	DAC_UNIT	0	
+Heungkuk					W_UNIT	PositiveMax(RoundA(Eval("V_UNIT",n,m,t,Freq))-RoundA(Eval("DAC_UNIT",n,m,t,Freq)))	
+Heungkuk					TempCK0	If(ElapseYear<m, 0, Round(0.5*RoundA(V(ElapseYear))*Amount, 0))	
+Heungkuk					TempCK1	If(ElapseYear<m, 0, Round(0.5*RoundA(V(ElapseYear+1))*Amount, 0))	
+Heungkuk		S_Type=1			STDALPHA_UNIT	RoundDown((0.05*Min(n,20)+0.45)*Eval("STDNP_UNIT",n,m,t,12)*Amount,0)/Amount	
+Heungkuk		S_Type=2			STDALPHA_UNIT	RoundDown((0.05*Min(n,20)*Eval("STDNP_UNIT",n,m,t,12)+0.01*Eval("Min_S"))*Amount,0)/Amount	
+Heungkuk		S_Type=3			STDALPHA_UNIT	RoundDown((0.05*Min(n,20)+0.15*Eval("STDNP_UNIT",n,m,t,12))*Amount,0)/Amount	
+
