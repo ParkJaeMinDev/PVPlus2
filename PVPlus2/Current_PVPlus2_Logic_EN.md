@@ -4,14 +4,17 @@
 
 `PVPlus2` is currently an early-stage WPF rewrite. The project already has:
 
-- a WPF shell with tabs,
-- a `MainPV` screen bound to a ViewModel,
+- a HandyControl tabbed main window,
+- a `MainPV` screen bound to `MainPVViewModel`,
 - file-picking commands for Excel, P, V, and W files,
+- a bound `ProductCode` input,
 - a simple text log output,
 - an `ExcelData` container model,
-- and base domain models ported from the legacy system.
+- base domain models ported from the legacy system,
+- a sheet-dispatch loading structure,
+- and an exploratory `Layout` sheet loader draft.
 
-The app is not yet running the legacy calculation pipeline. It is currently focused on UI wiring and data-loading groundwork.
+The app is not yet running the legacy calculation pipeline. It is currently focused on UI wiring, worksheet dispatch, and Excel-loading groundwork.
 
 ## Window Structure
 
@@ -32,14 +35,20 @@ At the moment, `MainPV` is the primary screen under active development.
 - P/V/W file path rows,
 - `Open` buttons bound to a shared command,
 - an `Output` button bound to `LoadExcelCommand`,
-- a placeholder control area for product, company, options, and radio selections,
+- a product-code input bound TwoWay to `ProductCode`,
+- placeholder `Start` and `Cancel` buttons,
+- placeholder UI for company, delimiter, options, and radio selections,
 - and a bottom log area implemented as a read-only multiline `TextBox`.
 
 The screen layout uses WPF `Grid` containers and HandyControl styles.
 
+### DataContext Wiring
+
+`Views/MainPVView.xaml.cs` sets `DataContext = new MainPVViewModel();` in the constructor. The current `MainPV` bindings are therefore connected in code-behind.
+
 ## MainPVViewModel
 
-`ViewModels/MainPVViewModel.cs` currently owns the screen state.
+`ViewModels/MainPVViewModel.cs` currently owns both the `MainPV` screen state and the Excel loading flow.
 
 ### Observable fields
 
@@ -48,6 +57,7 @@ The screen layout uses WPF `Grid` containers and HandyControl styles.
 - `V파일경로`
 - `W파일경로`
 - `로그텍스트`
+- `ProductCode`
 
 These are created from `[ObservableProperty]` fields using CommunityToolkit.Mvvm.
 
@@ -55,7 +65,7 @@ These are created from `[ObservableProperty]` fields using CommunityToolkit.Mvvm
 
 - `_excelData`
 
-This is an instance of `Models/ExcelData.cs`. It is intended to become the in-memory container for loaded reference data.
+This is an instance of `Models/ExcelData.cs`. It is a screen-scoped in-memory container that already exposes grouped dictionaries such as `PLayout`, `VLayout`, and `SLayout`, but the actual Excel-to-container population is still in progress.
 
 ### Commands
 
@@ -68,11 +78,48 @@ This is an instance of `Models/ExcelData.cs`. It is intended to become the in-me
   - Adds a startup log line.
   - Validates that the Excel path is not blank.
   - Validates that the file exists.
-  - Creates an `ExcelDataReader` using Sylvan.Data.Excel with `ExcelSchema.NoHeaders`.
-  - Iterates through sheets and rows.
-  - Writes sheet names and cell values into the log text.
+  - Creates `ExcelDataReaderOptions` with `ExcelSchema.NoHeaders`.
+  - Determines the workbook type with `ExcelDataReader.GetWorkbookType()`.
+  - Opens a `FileStream` with `FileMode.Open`, `FileAccess.Read`, and `FileShare.ReadWrite`.
+  - Creates an `ExcelDataReader` through the stream overload.
+  - Iterates worksheets and routes each one through `DispatchSheetLoad(sheetName, edr)`.
+  - Disposes both the stream and reader with nested `using` blocks.
 
-At this point, the Excel reader is being used for exploration and logging, not for building the final data structures yet.
+At this point, `LoadExcel()` has moved beyond raw logging and now acts as an initial worksheet loader shell with per-sheet dispatch.
+
+### Sheet dispatch
+
+`DispatchSheetLoad()` currently routes these worksheet names:
+
+- `Layout`
+- `Product`
+- `Rider`
+- `Rate`
+- `Expense`
+- `VarChg`
+- `SInfo`
+- `ChkExprs`
+
+Unknown sheets are skipped silently.
+
+### Current handler status
+
+- `LoadLayoutSheet`
+  - Partially implemented.
+  - Skips the first two rows as header rows.
+  - Reads P/V/S blocks from hard-coded column offsets within each row.
+  - Logs `상품코드`, `담보코드`, `Start`, `Length`, `Index`, and `FactorName`.
+  - Wraps row parsing in a per-row `try-catch`.
+
+- `LoadProductSheet`
+- `LoadRiderSheet`
+- `LoadRateSheet`
+- `LoadExpenseSheet`
+- `LoadVarChgSheet`
+- `LoadSInfoSheet`
+- `LoadChkExprsSheet`
+
+These methods currently contain only loop skeletons and do not yet populate data.
 
 ## Logging
 
@@ -103,7 +150,7 @@ The `Models` folder currently contains:
 
 ### Model strategy
 
-The current design intentionally stores expression-based fields as `string` values for now.
+Simple scalar fields stay as numeric types where appropriate, while expression-based fields are intentionally stored as raw `string` values for now.
 
 Examples:
 
@@ -115,7 +162,7 @@ Examples:
 
 The goal is to separate:
 
-1. raw text loading,
+1. raw text or cell loading,
 2. later expression compilation,
 3. and later calculation execution.
 
@@ -130,7 +177,9 @@ It contains:
 - file metadata such as source Excel path and data folder path,
 - a load timestamp,
 - dictionaries for products and riders,
-- grouped dictionaries for rates, layouts, variable changes, expenses, S information, and check expressions.
+- a grouped dictionary for rates,
+- `PLayout`, `VLayout`, and `SLayout`,
+- grouped dictionaries for variable changes, expenses, S information, and check expressions.
 
 Right now the container is created and owned by `MainPVViewModel`. It is not app-global.
 
@@ -141,21 +190,24 @@ Right now the container is created and owned by `MainPVViewModel`. It is not app
 - planned instance-owned data instead of global static runtime state
 - planned dictionary-based lookup instead of list-first lookup
 - Sylvan.Data.Excel for modern Excel reading
+- stream-based shared-read opening instead of simple path-based opening
+- a per-sheet dispatch loader shape is being built first
 - expression fields are still raw strings, not compiled delegates yet
 
 ## Current Limitations
 
-- `LoadExcel()` currently logs workbook contents instead of populating `ExcelData`
+- `LoadExcel()` still does not populate `_excelData`
+- the `Layout` sheet handler is currently logging-only
+- the other sheet handlers are still empty
+- column positions are hard-coded instead of being generalized
+- the `Start`, `Cancel`, company, and option controls are not yet connected to execution flow
 - legacy calculation classes are not yet ported
-- company rules, layouts, rates, expenses, and checks are not yet connected to execution flow
-- no dedicated loader class exists yet
-- data parsing and indexing strategy is still being shaped
 
 ## Expected Next Step
 
 The next natural step is:
 
-1. read the Excel workbook intentionally,
-2. identify which sheet or exported data is needed,
-3. populate `ExcelData`,
-4. and then add dictionary-based query helpers on top of that data.
+1. turn `Layout` logging into real population of `_excelData.PLayout`, `_excelData.VLayout`, and `_excelData.SLayout`,
+2. implement the remaining sheet loaders,
+3. centralize cell parsing, type conversion, and blank-value handling,
+4. and then connect loaded `ExcelData` to lookup and calculation flow.

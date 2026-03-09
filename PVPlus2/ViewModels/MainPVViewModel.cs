@@ -24,6 +24,9 @@ public partial class MainPVViewModel : ObservableObject
     [ObservableProperty]
     private string _로그텍스트 = string.Empty;
 
+    [ObservableProperty]
+    private string productCode = string.Empty;
+
     private ExcelData _excelData = new();
 
     [RelayCommand]
@@ -65,6 +68,25 @@ public partial class MainPVViewModel : ObservableObject
 
     }
 
+    private static string GetDialogTitle(string target)
+    {
+        return target switch
+        {
+            "Excel" => "Excel 파일 선택",
+            "P" => "P 파일 선택",
+            "V" => "V 파일 선택",
+            "W" => "W 파일 선택",
+            _ => "파일 선택"
+        };
+    }
+
+    private static string GetDialogFilter(string target)
+    {
+        return target == "Excel"
+            ? "Excel Files (*.xlsx;*.xls;*.xlsm;*.xlsb)|*.xlsx;*.xls;*.xlsm;*.xlsb|All Files (*.*)|*.*"
+            : "All Files (*.*)|*.*";
+    }
+
     [RelayCommand]
     private void LoadExcel()
     {
@@ -87,40 +109,244 @@ public partial class MainPVViewModel : ObservableObject
             Schema = ExcelSchema.NoHeaders
         };
 
-        using ExcelDataReader edr = ExcelDataReader.Create(엑셀파일경로, options);
+        FileStream stream;
+        ExcelDataReader edr;
+
+        try
+        {
+            ExcelWorkbookType workbookType = ExcelDataReader.GetWorkbookType(엑셀파일경로);
+            stream = new FileStream(
+                엑셀파일경로,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.ReadWrite);
+            edr = ExcelDataReader.Create(stream, workbookType, options);
+        }
+        catch(ArgumentException ex)
+        {
+            AddLog($"엑셀 파일을 여는 중 오류가 발생했습니다: 지원되지 않는 파일 형식입니다. 오류={ex.Message}");
+            return;
+        }
+        catch (Exception ex)
+        {
+            AddLog($"엑셀 파일을 여는 중 오류가 발생했습니다. 오류={ex.Message}");
+            return;
+        }
+
+        using (stream)
+        using (edr)
         do
         {
             var sheetName = edr.WorksheetName;
-            AddLog($"{sheetName}");
-            while (edr.Read())
+            if(string.IsNullOrWhiteSpace(sheetName))
             {
-                for (int i = 0; i < edr.RowFieldCount; i++)
-                {
-                    var value = edr.GetString(i);
-                    AddLog($"{value}");
-                }
+                AddLog("오류: 현재 시트 이름이 null 또는 빈 문자열입니다. Excel 읽기를 중단합니다.");
+                continue;
             }
+            AddLog($"시트 시작: {sheetName}");
+            DispatchSheetLoad(sheetName, edr);
         } while (edr.NextResult());
 
     }
 
-    private static string GetDialogTitle(string target)
+    private void DispatchSheetLoad(string sheetName, ExcelDataReader edr)
     {
-        return target switch
+        switch (sheetName)
         {
-            "Excel" => "Excel 파일 선택",
-            "P" => "P 파일 선택",
-            "V" => "V 파일 선택",
-            "W" => "W 파일 선택",
-            _ => "파일 선택"
-        };
+            case "Layout":
+                LoadLayoutSheet(edr);
+                break;
+            case "Product":
+                LoadProductSheet(edr);
+                break;
+            case "Rider":
+                LoadRiderSheet(edr);
+                break;
+            case "Rate":
+                LoadRateSheet(edr);
+                break;
+            case "Expense":
+                LoadExpenseSheet(edr);
+                break;
+            case "VarChg":
+                LoadVarChgSheet(edr);
+                break;
+            case "SInfo":
+                LoadSInfoSheet(edr);
+                break;
+            case "ChkExprs":
+                LoadChkExprsSheet(edr);
+                break;
+            default:
+                break;
+        }
     }
 
-    private static string GetDialogFilter(string target)
+    private void LoadLayoutSheet(ExcelDataReader edr)
     {
-        return target == "Excel"
-            ? "Excel Files (*.xlsx;*.xls;*.xlsm;*.xlsb)|*.xlsx;*.xls;*.xlsm;*.xlsb|All Files (*.*)|*.*"
-            : "All Files (*.*)|*.*";
+        int rowIndex = 0;
+
+        while (edr.Read())
+        {
+            rowIndex++;
+            if(rowIndex <= 2)
+            {
+                continue; // 헤더 행 건너뛰기
+            }
+            try
+            {
+                var P인덱스 = 0;
+                var P테이블상품코드 = edr.GetString(P인덱스);
+                var P테이블담보코드 = edr.GetString(P인덱스 + 1);
+                var P테이블Start = edr.GetInt32(P인덱스 + 2);
+                var P테이블Length = edr.GetInt32(P인덱스 + 3);
+                var P테이블Index = edr.GetInt32(P인덱스 + 4);
+                var P테이블FactorName = edr.GetString(P인덱스 + 5);
+
+                var V인덱스 = 7;
+                var V테이블상품코드 = edr.GetString(V인덱스);
+                var V테이블담보코드 = edr.GetString(V인덱스 + 1);
+                var V테이블Start = edr.GetInt32(V인덱스 + 2);
+                var V테이블Length = edr.GetInt32(V인덱스 + 3);
+                var V테이블Index = edr.GetInt32(V인덱스 + 4);
+                var V테이블FactorName = edr.GetString(V인덱스 + 5);
+
+                var S인덱스 = 7;
+                var S테이블상품코드 = edr.GetString(S인덱스);
+                var S테이블담보코드 = edr.GetString(S인덱스 + 1);
+                var S테이블Start = edr.GetInt32(S인덱스 + 2);
+                var S테이블Length = edr.GetInt32(S인덱스 + 3);
+                var S테이블Index = edr.GetInt32(S인덱스 + 4);
+                var S테이블FactorName = edr.GetString(S인덱스 + 5);
+
+                AddLog(
+                    $"P 상품코드={P테이블상품코드}, 담보코드={P테이블담보코드}, Start={P테이블Start}, " +
+                    $"Length={P테이블Length}, Index={P테이블Index}, FactorName={P테이블FactorName}"
+                );
+
+                AddLog(
+                    $"V 상품코드={V테이블상품코드}, 담보코드={V테이블담보코드}, Start={V테이블Start}, " +
+                    $"Length={V테이블Length}, Index={V테이블Index}, FactorName={V테이블FactorName}"
+                );
+
+                AddLog(
+                    $"S 상품코드={S테이블상품코드}, 담보코드={S테이블담보코드}, Start={S테이블Start}, " +
+                    $"Length={S테이블Length}, Index={S테이블Index}, FactorName={S테이블FactorName}"
+                );
+            }
+            catch (Exception ex)
+            {
+                AddLog($"Layout 시트의 행 {rowIndex}을 읽는 중 오류가 발생했습니다. 오류={ex.Message}");
+            }
+
+
+
+        }
+    }
+
+    private void LoadProductSheet(ExcelDataReader edr)
+    {
+        int rowIndex = 0;
+
+        while (edr.Read())
+        {
+            rowIndex++;
+
+            for (int i = 0; i < edr.RowFieldCount; i++)
+            {
+                
+            }
+        }
+    }
+
+    private void LoadRiderSheet(ExcelDataReader edr)
+    {
+        int rowIndex = 0;
+
+        while (edr.Read())
+        {
+            rowIndex++;
+
+            for (int i = 0; i < edr.RowFieldCount; i++)
+            {
+                
+            }
+        }
+    }
+
+    private void LoadRateSheet(ExcelDataReader edr)
+    {
+        int rowIndex = 0;
+
+        while (edr.Read())
+        {
+            rowIndex++;
+
+            for (int i = 0; i < edr.RowFieldCount; i++)
+            {
+                
+            }
+        }
+    }
+
+    private void LoadExpenseSheet(ExcelDataReader edr)
+    {
+        int rowIndex = 0;
+
+        while (edr.Read())
+        {
+            rowIndex++;
+
+            for (int i = 0; i < edr.RowFieldCount; i++)
+            {
+                
+            }
+        }
+    }
+
+    private void LoadVarChgSheet(ExcelDataReader edr)
+    {
+        int rowIndex = 0;
+
+        while (edr.Read())
+        {
+            rowIndex++;
+
+            for (int i = 0; i < edr.RowFieldCount; i++)
+            {
+                
+            }
+        }
+    }
+
+    private void LoadSInfoSheet(ExcelDataReader edr)
+    {
+        int rowIndex = 0;
+
+        while (edr.Read())
+        {
+            rowIndex++;
+
+            for (int i = 0; i < edr.RowFieldCount; i++)
+            {
+                
+            }
+        }
+    }
+
+    private void LoadChkExprsSheet(ExcelDataReader edr)
+    {
+        int rowIndex = 0;
+
+        while (edr.Read())
+        {
+            rowIndex++;
+
+            for (int i = 0; i < edr.RowFieldCount; i++)
+            {
+                
+            }
+        }
     }
 
     private void AddLog(string message)
