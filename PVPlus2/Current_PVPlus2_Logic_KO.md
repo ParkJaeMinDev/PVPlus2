@@ -2,19 +2,21 @@
 
 ## 현재 상태
 
-`PVPlus2`는 WPF 기반으로 다시 만드는 초기 단계 프로젝트다. 현재까지 구현된 것은 다음과 같다.
+`PVPlus2`는 과거 PVPlus를 WPF로 다시 만드는 초기 단계 프로젝트다.
+
+현재까지 구현된 것은 다음과 같다.
 
 - HandyControl 탭 기반 메인 창
 - `MainPV` 화면과 `MainPVViewModel` 바인딩
 - Excel, P, V, W 파일 선택 명령
-- `ProductCode` 입력 바인딩
+- `상품코드` 입력 바인딩
+- `구분자체크` 체크박스 바인딩
 - 문자열 누적 방식 로그 출력
-- `ExcelData` 데이터 컨테이너
-- 과거 모델을 옮겨온 기본 도메인 모델들
-- 시트 이름별 로더 분기 구조
-- `Layout` 시트용 탐색성 로더 초안
+- `ExcelData` 메모리 컨테이너
+- Excel 로드를 담당하는 `ExcelDataLoader` 서비스
+- Parlot 기반의 최소 수식 파서를 담은 `ExpressionCompiler` 서비스
 
-아직 과거 PVPlus의 계산 파이프라인을 그대로 실행하는 단계는 아니다. 현재는 UI 연결, 시트 분기 구조, Excel 로딩 기반을 만드는 중이다.
+아직 계산 파이프라인은 연결되지 않았고, 현재는 Excel 로더 구조와 수식 컴파일러 기반을 만드는 단계다.
 
 ## 창 구조
 
@@ -31,24 +33,19 @@
 
 `Views/MainPVView.xaml`에는 현재 다음 요소들이 있다.
 
-- Excel 파일 경로 입력 행
-- P/V/W 파일 경로 입력 행
-- 공통 명령에 바인딩된 `열기` 버튼들
+- Excel 파일 경로 입력과 열기 버튼
+- P/V/W 파일 경로 입력과 열기 버튼
 - `LoadExcelCommand`에 연결된 `출력` 버튼
-- `ProductCode`에 TwoWay 바인딩된 상품코드 입력칸
-- `시작`, `취소` 버튼 자리
-- 회사명, 구분자, 옵션, 라디오 선택용 UI 자리
-- 하단 로그 출력용 읽기 전용 멀티라인 `TextBox`
+- `상품코드` TwoWay 바인딩 입력칸
+- `구분자체크` TwoWay 바인딩 체크박스
+- 회사/옵션/라디오/기타 버튼용 자리 UI
+- 하단 읽기 전용 로그 `TextBox`
 
-레이아웃은 WPF `Grid`와 HandyControl 스타일을 사용한다.
-
-### DataContext 연결
-
-`Views/MainPVView.xaml.cs`는 생성자에서 `DataContext = new MainPVViewModel();`를 설정한다. 즉 현재 `MainPV` 바인딩은 코드 비하인드에서 연결된다.
+`Views/MainPVView.xaml.cs`는 현재도 생성자에서 `DataContext = new MainPVViewModel();`를 설정한다.
 
 ## MainPVViewModel
 
-`ViewModels/MainPVViewModel.cs`가 현재 `MainPV` 화면 상태와 Excel 로드 흐름을 관리한다.
+`ViewModels/MainPVViewModel.cs`는 예전보다 역할이 줄어든 상태다.
 
 ### Observable 필드
 
@@ -57,39 +54,57 @@
 - `V파일경로`
 - `W파일경로`
 - `로그텍스트`
-- `ProductCode`
+- `상품코드`
+- `구분자체크`
 
-이 값들은 CommunityToolkit.Mvvm의 `[ObservableProperty]`를 통해 프로퍼티로 생성된다.
+### 현재 역할
 
-### private 데이터 컨테이너
+현재 `MainPVViewModel`은 다음을 담당한다.
 
-- `_excelData`
-
-이 필드는 `Models/ExcelData.cs`의 인스턴스다. 현재 화면 범위에서 사용하는 메모리 컨테이너이며, Product/Rider/Rate와 함께 `PLayout`, `VLayout`, `SLayout` 같은 그룹 사전들을 가진다. 아직 실제 Excel 데이터 적재는 시작 단계다.
-
-### 명령
-
-- `OpenFileCommand`
-  - 파일 선택 대화상자를 연다.
-  - `Excel`, `P`, `V`, `W` 값을 `CommandParameter`로 받아 어떤 경로 프로퍼티를 갱신할지 결정한다.
-  - Excel은 엑셀 확장자 필터를 사용하고, 나머지는 전체 파일 필터를 사용한다.
-
+- UI 상태 보관
+- 파일 선택 명령
 - `LoadExcelCommand`
-  - 시작 로그를 남긴다.
-  - Excel 경로가 비어 있는지 검사한다.
-  - 파일이 실제로 존재하는지 검사한다.
-  - `ExcelDataReaderOptions`에 `ExcelSchema.NoHeaders`를 설정한다.
-  - `ExcelDataReader.GetWorkbookType()`으로 workbook type을 판별한다.
-  - `FileStream`을 `FileMode.Open`, `FileAccess.Read`, `FileShare.ReadWrite`로 연다.
-  - 스트림 overload인 `ExcelDataReader.Create(stream, workbookType, options)`를 사용한다.
-  - 각 시트 이름을 확인한 뒤 `DispatchSheetLoad(sheetName, edr)`로 분기한다.
-  - `using (stream)`과 `using (edr)`로 리소스를 정리한다.
+- `AddLog(string message)`를 통한 로그 누적
 
-즉 지금의 `LoadExcel()`은 단순 로그 출력 단계를 넘어서, 시트별 핸들러 구조를 갖춘 초기 loader 형태로 바뀌었다.
+### 현재 Excel 로드 흐름
 
-### 시트 분기
+`LoadExcel()`은 더 이상 직접 시트를 읽지 않는다.
 
-`DispatchSheetLoad()`는 현재 다음 시트 이름을 처리 대상으로 둔다.
+현재는 다음 순서로 동작한다.
+
+1. `ExcelDataLoader`를 생성한다.
+2. `AddLog` 메서드를 서비스에 넘긴다.
+3. `loader.LoadExcel(엑셀파일경로, 상품코드, 구분자체크)`를 호출한다.
+4. 서비스가 null이 아닌 `ExcelData`를 돌려주면 `_excelData`를 교체한다.
+
+## ExcelDataLoader 서비스
+
+`Services/ExcelDataLoader.cs`가 현재 Excel workbook 로드와 시트 분기를 담당한다.
+
+### 서비스 입력과 내부 상태
+
+서비스는 현재 다음 값을 입력으로 받는다.
+
+- Excel 파일 경로
+- 상품코드
+- 구분자 체크 여부
+- 선택적 로그 콜백 (`Action<string>`)
+
+로드 1회 동안 상품코드와 구분자 체크 상태를 private field에 저장해서 사용한다.
+
+### Workbook 열기
+
+`LoadExcel(...)`은 현재 다음을 수행한다.
+
+- 상품코드 공란 검사
+- Excel 경로 공란 검사
+- 파일 존재 여부 검사
+- 새로운 `ExcelData` 생성
+- `Sylvan.Data.Excel`로 workbook 열기
+- worksheet 순회
+- 시트 이름별 분기 호출
+
+### 현재 시트 분기 대상
 
 - `Layout`
 - `Product`
@@ -100,18 +115,62 @@
 - `SInfo`
 - `ChkExprs`
 
-처리 대상이 아닌 시트는 조용히 건너뛴다.
+알 수 없는 시트 이름은 조용히 건너뛴다.
 
-### 현재 핸들러 구현 상태
+### 현재 구현된 시트 로더
 
-- `LoadLayoutSheet`
-  - 현재 부분 구현 상태다.
-  - 처음 두 행을 헤더로 보고 건너뛴다.
-  - 한 행에서 P/V/S 블록을 하드코딩된 컬럼 위치로 읽는다.
-  - 읽어온 `상품코드`, `담보코드`, `Start`, `Length`, `Index`, `FactorName`을 로그에 출력한다.
-  - 행 단위 `try-catch`로 예외를 로그에 남긴다.
+#### `LoadLayoutSheet`
 
-- `LoadProductSheet`
+`Layout` 로더는 현재 실제 적재가 들어간 부분 구현 상태다.
+
+현재 동작은 다음과 같다.
+
+- 처음 2행을 헤더로 보고 건너뜀
+- 한 행을 P/V/S 세 블록으로 나눠 읽음
+  - P 시작 열 0
+  - V 시작 열 7
+  - S 시작 열 14
+- 상품코드가 다음 중 하나인 행만 포함
+  - `RiderCode`
+  - `Check`
+  - `Base`
+  - 현재 입력한 상품코드
+- `FactorName`이 빈칸이면 제외
+- 구분자 모드면 `Index`가 빈칸인 행 제외
+- 고정폭 모드면 `Start`가 빈칸인 행 제외
+- `Start`, `Length`, `Index`는 `ToIntOrDefault(..., 0)`으로 변환
+- 결과를 `_excelData.PLayout`, `_excelData.VLayout`, `_excelData.SLayout`에 적재
+- 저장 구조는 `Dictionary<string, List<Layout>>`
+- 즉 상품코드별로 여러 `Layout`을 그룹화해서 저장
+
+이 필터 조건은 과거 PVPlus의 `ReadLayouts()` 핵심 규칙을 반영한 것이다.
+
+#### `LoadProductSheet`
+
+`Product` 로더도 현재 부분 구현 상태다.
+
+현재 동작은 다음과 같다.
+
+- `Product` 시트를 한 행씩 읽음
+- 첫 번째 컬럼의 상품코드가 현재 입력 상품코드와 일치하는 첫 행을 찾음
+- 다음 값을 읽음
+  - `상품코드`
+  - `판매시기`
+  - `상품명`
+  - `예정이율`
+  - `평균공시이율`
+  - `판매채널`
+- `Product` 객체를 만들어 `_excelData.Product`에 저장
+- 로드된 값을 로그로 남김
+- 파싱 실패 시 오류 로그 후 종료
+- 끝까지 못 찾으면 not-found 로그를 남김
+
+현재 구현은 Product 시트의 숫자 셀이 실제 숫자 셀로 들어 있다는 전제를 가진다.
+
+### 아직 비어 있는 시트 로더
+
+다음 메서드들은 아직 루프 골격만 있고 실제 적재 로직은 없다.
+
 - `LoadRiderSheet`
 - `LoadRateSheet`
 - `LoadExpenseSheet`
@@ -119,95 +178,126 @@
 - `LoadSInfoSheet`
 - `LoadChkExprsSheet`
 
-위 메서드들은 현재 루프 골격만 있고 실제 적재 로직은 아직 비어 있다.
+## 모델 설계 방향
 
-## 로그 출력
+현재 모델 방향은 “먼저 raw 데이터나 단순 스칼라 값을 적재하고, 이후 compile/runtime 계층을 붙이는 방식”이다.
 
-로그는 현재 문자열 누적 방식으로 처리한다.
+예를 들면:
 
-- `AddLog(string message)`가 타임스탬프를 붙여 `로그텍스트`에 한 줄씩 이어 붙인다.
-- UI는 `TextBox.Text`를 `로그텍스트`에 바인딩한다.
+- `Product`는 단순 수치 필드는 숫자 타입으로 보관
+- `Rider`는 수식 관련 필드를 현재 모두 `string`으로 보관
+- `RateKeyByRateVariable`은 이미 `Dictionary<string, string>` 구조 사용
+- `ExcelData`는 도메인별 데이터를 묶는 public 컨테이너
 
-현재 타임스탬프 형식은 다음과 같다.
+이 방향은 과거 PVPlus처럼 로딩과 수식 컴파일이 한 덩어리였던 구조와 의도적으로 다르다.
 
-- `HH:mm:ss.fffff`
+## ExpressionCompiler
 
-이 방식은 단순하고 안정적이며, 앞서 문제였던 `RichTextBox.Document` 바인딩 문제도 피할 수 있다.
+`Services/ExpressionCompiler.cs`는 Parlot 기반의 첫 번째 수식 파서 초안이다.
 
-## 모델 계층
+### 현재 구현된 기능
 
-현재 `Models` 폴더에는 다음 클래스들이 있다.
+현재 지원하는 것은 아주 최소한이다.
 
-- `Product`
-- `Rider`
-- `Rate`
-- `Layout`
-- `VarChg`
-- `Expense`
-- `SInfo`
-- `ChkExprs`
-- `ExcelData`
+- 숫자 리터럴
+- 괄호
+- 이항 `+`
+- 이항 `-`
+- 이항 `*`
+- 이항 `/`
 
-### 현재 모델 설계 방향
+### 현재 설계 방향
 
-단순 수치형 필드들은 실제 숫자 타입으로 두고, 수식 기반 컬럼들은 당장은 컴파일된 delegate가 아니라 `string`으로 저장하고 있다.
+현재 컴파일러는 단순화를 위해 다음 방향을 따른다.
 
-예:
+- 모든 숫자형 계산은 `double` 기준
+- 평가 결과 타입도 `double`
+- static compiled parser를 재사용
+- `Eof()`를 적용해서 문자열 전체를 모두 소비해야 성공
+- 아직 custom AST 생성 단계는 아니고 즉시 파싱/평가 수준
 
-- Rider 관련 수식
-- Expense 조건 및 수식
-- VarChg 수식
-- ChkExprs 수식
-- SInfo 수식
+즉 새 엔진 방향에서는 `1 / 1000`을 `0.001`로 계산하는 쪽을 목표로 한다.
 
-의도는 다음 3단계를 분리하는 것이다.
+### 아직 미구현된 연산자
 
-1. 원본 텍스트 또는 셀 값 로딩
-2. 이후 수식 컴파일
-3. 이후 계산 실행
+Flee 기준으로 아직 없는 연산자는 다음과 같다.
 
-이 방식은 과거 프로젝트처럼 로딩과 수식 컴파일이 강하게 섞여 있던 구조보다 단순하다.
+- `%`
+- `^`
+- `=`
+- `<>`
+- `<`
+- `>`
+- `<=`
+- `>=`
+- `And`
+- `Or`
+- `Xor`
+- `Not`
+- `<<`
+- `>>`
 
-## ExcelData 컨테이너
+완전히 구현되지 않은 것:
+- 일반 unary minus 예: `-(1+2)`
+- unary plus
 
-`ExcelData.cs`는 현재 로드된 데이터를 묶어 들고 있는 메모리 컨테이너다.
+### 아직 미구현된 함수
 
-포함 내용은 다음과 같다.
+현재 함수 호출 자체가 없다.
 
-- 원본 Excel 경로, Data 폴더 경로 같은 메타데이터
-- 로드 시각
-- Product, Rider용 사전
-- Rate용 그룹 사전
-- `PLayout`, `VLayout`, `SLayout`
-- VarChg, Expense, SInfo, ChkExprs용 그룹 사전
+즉 아직 지원하지 않는 예시는 다음과 같다.
 
-지금은 이 객체를 `MainPVViewModel`이 private 필드로 소유하고 있다. 즉 앱 전역 공유 데이터는 아니고 현재 화면 범위 데이터에 가깝다.
+- `If(...)`
+- `Abs(...)`
+- `Min(...)`
+- `Max(...)`
+- `Round(...)`
+- `Floor(...)`
+- `Ceiling(...)`
+- `Pow(...)`
+- `cast(...)`
+- `in`
+- 프로젝트 전용 helper 함수들
 
-## 과거 PVPlus와의 현재 차이점
+### 아직 미구현된 변수 참조와 런타임 바인딩
 
-- WinForms 대신 WPF + MVVM
-- 수동 이벤트 처리 대신 CommunityToolkit.Mvvm
-- 전역 static 상태 대신 인스턴스 소유 데이터 지향
-- `List` 중심 조회 대신 `Dictionary` 기반 조회를 계획
-- 현대 Excel 읽기를 위해 Sylvan.Data.Excel 사용
-- 경로 기반 open 대신 스트림 기반 shared-read open 사용
-- 시트 이름별 분기 로더 구조를 먼저 세우는 중
-- 수식 필드는 아직 컴파일하지 않고 문자열 상태로 유지
+현재 컴파일러는 변수 참조를 전혀 지원하지 않는다.
+
+즉 아직 사용할 수 없는 예시는 다음과 같다.
+
+- factor 변수 `F1 ~ F10`
+- 위험률 변수 `q1 ~ q30`
+- MP 변수 `n`, `m`, `Age`, `Freq`, `Jong`, `ElapseYear`
+- S 변수 `S1 ~ S10`
+- 체크 변수 `NP0`, `GP0`, `V0`, `W0`
+- 임시 변수 `TempStr1`, `TempCK0`
+
+또한 아직 지원하지 않는 것:
+
+- 배열 인덱싱 예: `VWhole[0]`
+- 멤버 접근
+- 문자열 수식
+- bool 수식
+- 혼합 타입 수식
+- 변수 컨텍스트 기반 delegate 생성
 
 ## 현재 한계
 
-- `LoadExcel()`은 아직 `_excelData`를 실제로 채우지 않는다.
-- `Layout` 시트도 현재는 값 로그 출력 단계다.
-- `Product`, `Rider`, `Rate`, `Expense`, `VarChg`, `SInfo`, `ChkExprs` 로더는 아직 비어 있다.
-- 컬럼 위치가 하드코딩되어 있어 일반화된 파서가 아직 없다.
-- `시작`, `취소`, 회사명, 옵션 UI는 실행 흐름에 아직 연결되지 않았다.
-- 과거 계산 클래스들은 아직 포팅되지 않았다.
+현재 한계는 다음과 같다.
 
-## 다음 단계
+- `Layout`, `Product`만 부분 구현됨
+- `Rider`, `Rate`, `Expense`, `VarChg`, `SInfo`, `ChkExprs` 로더는 미구현
+- `ExpressionCompiler`는 아직 최소 사칙연산 프로토타입 수준
+- 변수 참조가 가능한 평가 엔진이 아직 없음
+- Flee 호환 수식 런타임이 아직 없음
+- 계산 파이프라인과 아직 연결되지 않음
+
+## 다음 방향
 
 가장 자연스러운 다음 단계는 아래 순서다.
 
-1. `Layout` 로그 출력을 `_excelData.PLayout`, `_excelData.VLayout`, `_excelData.SLayout` 적재로 바꾼다.
-2. 나머지 시트 로더들을 실제 데이터 적재 로직으로 채운다.
-3. 셀 읽기, 형변환, 빈칸 처리 로직을 공통 helper로 정리한다.
-4. 적재된 `ExcelData` 위에 조회 계층과 계산 흐름을 연결한다.
+1. 현재 raw-string 모델 기준으로 `LoadRiderSheet` 구현
+2. 나머지 시트 로더 구현
+3. `ExpressionCompiler`에 변수와 함수 지원 추가
+4. 로드된 rule 데이터 위에 런타임 평가 계층 구축
+5. 이후 계산 파이프라인 연결

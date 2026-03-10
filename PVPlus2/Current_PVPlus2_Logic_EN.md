@@ -2,19 +2,21 @@
 
 ## Status
 
-`PVPlus2` is currently an early-stage WPF rewrite. The project already has:
+`PVPlus2` is an early-stage WPF rewrite of the legacy PVPlus tool.
 
-- a HandyControl tabbed main window,
-- a `MainPV` screen bound to `MainPVViewModel`,
-- file-picking commands for Excel, P, V, and W files,
-- a bound `ProductCode` input,
-- a simple text log output,
-- an `ExcelData` container model,
-- base domain models ported from the legacy system,
-- a sheet-dispatch loading structure,
-- and an exploratory `Layout` sheet loader draft.
+The project currently has:
 
-The app is not yet running the legacy calculation pipeline. It is currently focused on UI wiring, worksheet dispatch, and Excel-loading groundwork.
+- a HandyControl tabbed main window
+- a `MainPV` screen bound to `MainPVViewModel`
+- file-picking commands for Excel, P, V, and W files
+- a bound `ProductCode` input
+- a bound delimiter checkbox (`구분자체크`)
+- a text-based log area
+- an `ExcelData` in-memory container
+- an `ExcelDataLoader` service that owns Excel workbook loading and sheet dispatch
+- an `ExpressionCompiler` service that currently supports only minimal arithmetic parsing with Parlot
+
+The app is still in the data-loading and parser-foundation stage. The legacy calculation pipeline has not been ported yet.
 
 ## Window Structure
 
@@ -25,30 +27,25 @@ The app is not yet running the legacy calculation pipeline. It is currently focu
 - `LTFHelper`
 - `TabTest`
 
-At the moment, `MainPV` is the primary screen under active development.
+`MainPV` is the primary screen under active development.
 
 ## MainPV Screen
 
 `Views/MainPVView.xaml` currently contains:
 
-- an Excel file path row,
-- P/V/W file path rows,
-- `Open` buttons bound to a shared command,
-- an `Output` button bound to `LoadExcelCommand`,
-- a product-code input bound TwoWay to `ProductCode`,
-- placeholder `Start` and `Cancel` buttons,
-- placeholder UI for company, delimiter, options, and radio selections,
-- and a bottom log area implemented as a read-only multiline `TextBox`.
+- Excel file path input and open button
+- P/V/W file path inputs and open buttons
+- an `Output` button bound to `LoadExcelCommand`
+- a `상품코드` input bound TwoWay
+- a `구분자` checkbox bound TwoWay to `구분자체크`
+- placeholder company/options/radio/button UI
+- a read-only multiline log `TextBox`
 
-The screen layout uses WPF `Grid` containers and HandyControl styles.
-
-### DataContext Wiring
-
-`Views/MainPVView.xaml.cs` sets `DataContext = new MainPVViewModel();` in the constructor. The current `MainPV` bindings are therefore connected in code-behind.
+`Views/MainPVView.xaml.cs` still assigns `DataContext = new MainPVViewModel();` in code-behind.
 
 ## MainPVViewModel
 
-`ViewModels/MainPVViewModel.cs` currently owns both the `MainPV` screen state and the Excel loading flow.
+`ViewModels/MainPVViewModel.cs` is now thinner than before.
 
 ### Observable fields
 
@@ -57,39 +54,57 @@ The screen layout uses WPF `Grid` containers and HandyControl styles.
 - `V파일경로`
 - `W파일경로`
 - `로그텍스트`
-- `ProductCode`
+- `상품코드`
+- `구분자체크`
 
-These are created from `[ObservableProperty]` fields using CommunityToolkit.Mvvm.
+### Responsibilities
 
-### Private data container
+`MainPVViewModel` currently owns:
 
-- `_excelData`
-
-This is an instance of `Models/ExcelData.cs`. It is a screen-scoped in-memory container that already exposes grouped dictionaries such as `PLayout`, `VLayout`, and `SLayout`, but the actual Excel-to-container population is still in progress.
-
-### Commands
-
-- `OpenFileCommand`
-  - Opens a file dialog.
-  - Uses a command parameter (`Excel`, `P`, `V`, `W`) to decide which path property to update.
-  - Excel uses an Excel filter; the others use `All Files (*.*)`.
-
+- UI-bound state
+- file dialog commands
 - `LoadExcelCommand`
-  - Adds a startup log line.
-  - Validates that the Excel path is not blank.
-  - Validates that the file exists.
-  - Creates `ExcelDataReaderOptions` with `ExcelSchema.NoHeaders`.
-  - Determines the workbook type with `ExcelDataReader.GetWorkbookType()`.
-  - Opens a `FileStream` with `FileMode.Open`, `FileAccess.Read`, and `FileShare.ReadWrite`.
-  - Creates an `ExcelDataReader` through the stream overload.
-  - Iterates worksheets and routes each one through `DispatchSheetLoad(sheetName, edr)`.
-  - Disposes both the stream and reader with nested `using` blocks.
+- log accumulation through `AddLog(string message)`
 
-At this point, `LoadExcel()` has moved beyond raw logging and now acts as an initial worksheet loader shell with per-sheet dispatch.
+### Current load flow
 
-### Sheet dispatch
+`LoadExcel()` no longer parses worksheets directly.
 
-`DispatchSheetLoad()` currently routes these worksheet names:
+It now:
+
+1. creates an `ExcelDataLoader`
+2. passes `AddLog` into the service
+3. calls `loader.LoadExcel(엑셀파일경로, 상품코드, 구분자체크)`
+4. replaces `_excelData` only when the service returns non-null data
+
+## ExcelDataLoader Service
+
+`Services/ExcelDataLoader.cs` now owns workbook loading and sheet dispatch.
+
+### Service input and state
+
+The service currently receives:
+
+- Excel file path
+- product code
+- delimiter-mode checkbox state
+- an optional log callback (`Action<string>`)
+
+It stores product code and delimiter mode in private fields during a load run.
+
+### Workbook opening
+
+`LoadExcel(...)` currently:
+
+- validates that product code is not blank
+- validates that Excel path is not blank
+- validates that the file exists
+- creates a fresh `ExcelData`
+- opens the workbook with `Sylvan.Data.Excel`
+- iterates worksheets
+- dispatches each worksheet by name
+
+### Current sheet dispatch targets
 
 - `Layout`
 - `Product`
@@ -100,18 +115,61 @@ At this point, `LoadExcel()` has moved beyond raw logging and now acts as an ini
 - `SInfo`
 - `ChkExprs`
 
-Unknown sheets are skipped silently.
+Unknown sheets are skipped.
 
-### Current handler status
+### Implemented sheet loaders
 
-- `LoadLayoutSheet`
-  - Partially implemented.
-  - Skips the first two rows as header rows.
-  - Reads P/V/S blocks from hard-coded column offsets within each row.
-  - Logs `상품코드`, `담보코드`, `Start`, `Length`, `Index`, and `FactorName`.
-  - Wraps row parsing in a per-row `try-catch`.
+#### `LoadLayoutSheet`
 
-- `LoadProductSheet`
+`Layout` loading is now partially implemented as real data population.
+
+Current behavior:
+
+- treats the first two rows as header rows
+- reads three blocks from one row:
+  - P block starting at column 0
+  - V block starting at column 7
+  - S block starting at column 14
+- keeps only rows whose product code is one of:
+  - `RiderCode`
+  - `Check`
+  - `Base`
+  - current product code
+- skips rows with blank `FactorName`
+- if delimiter mode is enabled, skips rows with blank `Index`
+- if delimiter mode is disabled, skips rows with blank `Start`
+- converts `Start`, `Length`, and `Index` with `ToIntOrDefault(..., 0)`
+- stores layouts into `_excelData.PLayout`, `_excelData.VLayout`, and `_excelData.SLayout`
+- groups layouts by `상품코드` as `Dictionary<string, List<Layout>>`
+
+This behavior intentionally mirrors the important filtering rules of legacy PVPlus layout loading.
+
+#### `LoadProductSheet`
+
+`Product` loading is now partially implemented.
+
+Current behavior:
+
+- scans the `Product` sheet row by row
+- finds the first row whose first column matches the current product code
+- reads:
+  - `상품코드`
+  - `판매시기`
+  - `상품명`
+  - `예정이율`
+  - `평균공시이율`
+  - `판매채널`
+- stores one `Product` into `_excelData.Product`
+- logs the loaded values
+- logs an error if parsing fails
+- logs a not-found message if no matching row exists
+
+Current implementation expects numeric product cells to already be valid numeric Excel cells.
+
+### Unimplemented sheet loaders
+
+The following methods still contain only loop skeletons:
+
 - `LoadRiderSheet`
 - `LoadRateSheet`
 - `LoadExpenseSheet`
@@ -119,95 +177,127 @@ Unknown sheets are skipped silently.
 - `LoadSInfoSheet`
 - `LoadChkExprsSheet`
 
-These methods currently contain only loop skeletons and do not yet populate data.
+## Model Direction
 
-## Logging
-
-Logging is currently text-based.
-
-- `AddLog(string message)` appends a timestamped line to `로그텍스트`.
-- The UI binds `TextBox.Text` to `로그텍스트`.
-
-The current timestamp format is:
-
-- `HH:mm:ss.fffff`
-
-This approach is simple and stable. It also avoids the `RichTextBox.Document` binding issue that was encountered earlier.
-
-## Model Layer
-
-The `Models` folder currently contains:
-
-- `Product`
-- `Rider`
-- `Rate`
-- `Layout`
-- `VarChg`
-- `Expense`
-- `SInfo`
-- `ChkExprs`
-- `ExcelData`
-
-### Model strategy
-
-Simple scalar fields stay as numeric types where appropriate, while expression-based fields are intentionally stored as raw `string` values for now.
+The current model direction is to keep raw Excel text or simple scalar values first, then add compile/runtime layers later.
 
 Examples:
 
-- rider expressions,
-- expense conditions and formulas,
-- variable change formulas,
-- check expressions,
-- S-related formulas.
+- `Product` already stores scalar values as numeric types where simple
+- `Rider` currently stores expression-related fields as raw `string`
+- `RateKeyByRateVariable` is already modeled as a dictionary
+- `ExcelData` is a public container that groups loaded data by domain
 
-The goal is to separate:
+This is a deliberate separation from legacy PVPlus, where loading and expression compilation were tightly mixed.
 
-1. raw text or cell loading,
-2. later expression compilation,
-3. and later calculation execution.
+## ExpressionCompiler
 
-This is simpler than the legacy design, where file loading and expression compilation were tightly mixed together.
+`Services/ExpressionCompiler.cs` is the first Parlot-based parser prototype.
 
-## ExcelData Container
+### Current implemented behavior
 
-`ExcelData.cs` is the current in-memory holder for loaded data.
+It currently supports only:
 
-It contains:
+- numeric literals
+- parentheses
+- binary `+`
+- binary `-`
+- binary `*`
+- binary `/`
 
-- file metadata such as source Excel path and data folder path,
-- a load timestamp,
-- dictionaries for products and riders,
-- a grouped dictionary for rates,
-- `PLayout`, `VLayout`, and `SLayout`,
-- grouped dictionaries for variable changes, expenses, S information, and check expressions.
+### Current design decisions
 
-Right now the container is created and owned by `MainPVViewModel`. It is not app-global.
+The current compiler design is intentionally simple:
 
-## Current Differences From Legacy PVPlus
+- all numeric parsing is treated as `double`
+- evaluation result type is `double`
+- a static compiled parser is reused
+- `Eof()` is applied so the full input must be consumed
+- the compiler currently parses and evaluates immediately, not to a custom AST yet
 
-- WPF + MVVM instead of WinForms + event-heavy forms
-- CommunityToolkit.Mvvm instead of manual property/event boilerplate
-- planned instance-owned data instead of global static runtime state
-- planned dictionary-based lookup instead of list-first lookup
-- Sylvan.Data.Excel for modern Excel reading
-- stream-based shared-read opening instead of simple path-based opening
-- a per-sheet dispatch loader shape is being built first
-- expression fields are still raw strings, not compiled delegates yet
+This means an expression like `1 / 1000` is expected to produce `0.001` in the new design.
+
+### Currently unimplemented operators
+
+Flee-style operators not implemented yet include:
+
+- `%`
+- `^`
+- `=`
+- `<>`
+- `<`
+- `>`
+- `<=`
+- `>=`
+- `And`
+- `Or`
+- `Xor`
+- `Not`
+- `<<`
+- `>>`
+
+Also not fully implemented yet:
+
+- general unary minus such as `-(1+2)`
+- unary plus
+
+### Currently unimplemented functions
+
+No function-call support exists yet.
+
+That means the compiler does not yet support expressions such as:
+
+- `If(...)`
+- `Abs(...)`
+- `Min(...)`
+- `Max(...)`
+- `Round(...)`
+- `Floor(...)`
+- `Ceiling(...)`
+- `Pow(...)`
+- `cast(...)`
+- `in`
+- project-specific helper functions
+
+### Currently unimplemented variable and runtime binding features
+
+The compiler does not yet support variable references.
+
+Examples not yet supported:
+
+- factor variables like `F1` to `F10`
+- rate variables like `q1` to `q30`
+- MP factors like `n`, `m`, `Age`, `Freq`, `Jong`, `ElapseYear`
+- S factors like `S1` to `S10`
+- check/result variables like `NP0`, `GP0`, `V0`, `W0`
+- temporary variables such as `TempStr1`, `TempCK0`
+
+Also not yet supported:
+
+- array indexing such as `VWhole[0]`
+- property/member access
+- string expressions
+- boolean expressions
+- dynamic mixed-type expressions
+- runtime delegate generation over a variable context
 
 ## Current Limitations
 
-- `LoadExcel()` still does not populate `_excelData`
-- the `Layout` sheet handler is currently logging-only
-- the other sheet handlers are still empty
-- column positions are hard-coded instead of being generalized
-- the `Start`, `Cancel`, company, and option controls are not yet connected to execution flow
-- legacy calculation classes are not yet ported
+Current limitations include:
 
-## Expected Next Step
+- only `Layout` and `Product` sheet loading are partially implemented
+- rider/rate/expense/variable-change/check-expression sheets are not loaded yet
+- expression parsing is still a minimal arithmetic prototype
+- no variable-aware evaluation exists yet
+- no Flee-compatible expression runtime exists yet
+- no legacy calculation classes have been connected yet
 
-The next natural step is:
+## Next Direction
 
-1. turn `Layout` logging into real population of `_excelData.PLayout`, `_excelData.VLayout`, and `_excelData.SLayout`,
-2. implement the remaining sheet loaders,
-3. centralize cell parsing, type conversion, and blank-value handling,
-4. and then connect loaded `ExcelData` to lookup and calculation flow.
+The natural next steps are:
+
+1. implement `LoadRiderSheet` using the current raw-string model strategy
+2. implement the remaining sheet loaders
+3. extend `ExpressionCompiler` from arithmetic-only parsing to variables and functions
+4. build a runtime evaluation layer over loaded rule data
+5. connect compiled expressions to the future calculation pipeline
