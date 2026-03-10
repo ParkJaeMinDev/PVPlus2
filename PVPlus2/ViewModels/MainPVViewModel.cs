@@ -93,6 +93,13 @@ public partial class MainPVViewModel : ObservableObject
     [RelayCommand]
     private void LoadExcel()
     {
+
+        if (string.IsNullOrWhiteSpace(상품코드))
+        {
+            AddLog("상품코드가 비어 있습니다.");
+            return;
+        }
+
         _excelData = new ExcelData();
         AddLog("엑셀 파일 로드 시작");
 
@@ -292,11 +299,47 @@ public partial class MainPVViewModel : ObservableObject
         {
             rowIndex++;
 
-            for (int i = 0; i < edr.RowFieldCount; i++)
+            try
             {
-                
+                string 상품코드값 = edr.GetString(0);
+
+                if (상품코드값 != 상품코드)
+                {
+                    continue;
+                }
+
+                string 판매시기값 = edr.GetString(1);
+                string 상품명값 = edr.GetString(2);
+                double 예정이율 = edr.GetDouble(3);
+                double 평균공시이율 = edr.GetDouble(4);
+                int 판매채널 = edr.GetInt32(5);
+
+                Product product = new Product
+                {
+                    상품코드 = 상품코드값,
+                    판매시기 = 판매시기값,
+                    상품명 = 상품명값,
+                    예정이율 = 예정이율,
+                    평균공시이율 = 평균공시이율,
+                    판매채널 = 판매채널
+                };
+
+                _excelData.Product[product.상품코드] = product;
+
+                AddLog(
+                    $"Product 상품코드={상품코드값}, 판매시기={판매시기값}, 상품명={상품명값}, " +
+                    $"예정이율={예정이율}, 평균공시이율={평균공시이율}, 판매채널={판매채널}");
+                return;
+            }
+            catch (Exception ex)
+            {
+                AddLog($"Product 시트의 행 {rowIndex}을 읽는 중 오류가 발생했습니다. 오류={ex.Message}");
+                return;
             }
         }
+
+        AddLog($"Product 시트에서 상품코드({상품코드})를 찾을 수 없습니다.");
+
     }
 
     private void LoadRiderSheet(ExcelDataReader edr)
