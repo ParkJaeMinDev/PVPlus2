@@ -25,7 +25,10 @@ public partial class MainPVViewModel : ObservableObject
     private string _로그텍스트 = string.Empty;
 
     [ObservableProperty]
-    private string productCode = string.Empty;
+    private string _상품코드 = string.Empty;
+
+    [ObservableProperty]
+    private bool _구분자체크;
 
     private ExcelData _excelData = new();
 
@@ -90,6 +93,7 @@ public partial class MainPVViewModel : ObservableObject
     [RelayCommand]
     private void LoadExcel()
     {
+        _excelData = new ExcelData();
         AddLog("엑셀 파일 로드 시작");
 
         if (string.IsNullOrWhiteSpace(엑셀파일경로))
@@ -184,6 +188,18 @@ public partial class MainPVViewModel : ObservableObject
 
     private void LoadLayoutSheet(ExcelDataReader edr)
     {
+
+        const int P인덱스 = 0;
+        const int V인덱스 = 7;
+        const int S인덱스 = 14;
+
+        var layoutBlocks = new (string TableName, int BaseIndex, Dictionary<string, List<Layout>> Target)[]
+        {
+            ("P", P인덱스, _excelData.PLayout),
+            ("V", V인덱스, _excelData.VLayout),
+            ("S", S인덱스, _excelData.SLayout),
+        };
+
         int rowIndex = 0;
 
         while (edr.Read())
@@ -193,55 +209,79 @@ public partial class MainPVViewModel : ObservableObject
             {
                 continue; // 헤더 행 건너뛰기
             }
-            try
+
+            foreach (var block in layoutBlocks)
             {
-                var P인덱스 = 0;
-                var P테이블상품코드 = edr.GetString(P인덱스);
-                var P테이블담보코드 = edr.GetString(P인덱스 + 1);
-                var P테이블Start = edr.GetInt32(P인덱스 + 2);
-                var P테이블Length = edr.GetInt32(P인덱스 + 3);
-                var P테이블Index = edr.GetInt32(P인덱스 + 4);
-                var P테이블FactorName = edr.GetString(P인덱스 + 5);
+                try
+                {
+                    string 상품코드값 = edr.GetString(block.BaseIndex);
+                    string 담보코드값 = edr.GetString(block.BaseIndex + 1);
+                    string startText = edr.GetString(block.BaseIndex + 2);
+                    string lengthText = edr.GetString(block.BaseIndex + 3);
+                    string indexText = edr.GetString(block.BaseIndex + 4);
+                    string factorName값 = edr.GetString(block.BaseIndex + 5);
 
-                var V인덱스 = 7;
-                var V테이블상품코드 = edr.GetString(V인덱스);
-                var V테이블담보코드 = edr.GetString(V인덱스 + 1);
-                var V테이블Start = edr.GetInt32(V인덱스 + 2);
-                var V테이블Length = edr.GetInt32(V인덱스 + 3);
-                var V테이블Index = edr.GetInt32(V인덱스 + 4);
-                var V테이블FactorName = edr.GetString(V인덱스 + 5);
+                    bool 상품코드일치 = 상품코드값 == "RiderCode" || 상품코드값 == "Check" || 상품코드값 == "Base" || 상품코드값 == 상품코드;
 
-                var S인덱스 = 7;
-                var S테이블상품코드 = edr.GetString(S인덱스);
-                var S테이블담보코드 = edr.GetString(S인덱스 + 1);
-                var S테이블Start = edr.GetInt32(S인덱스 + 2);
-                var S테이블Length = edr.GetInt32(S인덱스 + 3);
-                var S테이블Index = edr.GetInt32(S인덱스 + 4);
-                var S테이블FactorName = edr.GetString(S인덱스 + 5);
+                    if (!상품코드일치)
+                    {
+                        continue;
+                    }
 
-                AddLog(
-                    $"P 상품코드={P테이블상품코드}, 담보코드={P테이블담보코드}, Start={P테이블Start}, " +
-                    $"Length={P테이블Length}, Index={P테이블Index}, FactorName={P테이블FactorName}"
-                );
+                    // factorName값이 비어 있으면 해당 행을 건너뜁니다.
+                    if (string.IsNullOrWhiteSpace(factorName값))
+                    {
+                        continue;
+                    }
 
-                AddLog(
-                    $"V 상품코드={V테이블상품코드}, 담보코드={V테이블담보코드}, Start={V테이블Start}, " +
-                    $"Length={V테이블Length}, Index={V테이블Index}, FactorName={V테이블FactorName}"
-                );
+                    // 구분자를 체크하는 경우, indexText가 비어 있으면 해당 행을 건너뜁니다.
+                    if (구분자체크 && string.IsNullOrWhiteSpace(indexText))
+                    {
+                        continue;
+                    }
 
-                AddLog(
-                    $"S 상품코드={S테이블상품코드}, 담보코드={S테이블담보코드}, Start={S테이블Start}, " +
-                    $"Length={S테이블Length}, Index={S테이블Index}, FactorName={S테이블FactorName}"
-                );
+                    // 구분자를 체크하지 않는 경우, startText가 비어 있으면 해당 행을 건너뜁니다.
+                    if (!구분자체크 && string.IsNullOrWhiteSpace(startText))
+                    {
+                        continue;
+                    }
+
+                    int startValue = ToIntOrDefault(startText, 0);
+                    int lengthValue = ToIntOrDefault(lengthText, 0);
+                    int indexValue = ToIntOrDefault(indexText, 0);
+
+                    Layout layout = new Layout
+                    {
+                        상품코드 = 상품코드값,
+                        담보코드 = 담보코드값,
+                        Start = startValue,
+                        Length = lengthValue,
+                        Index = indexValue,
+                        FactorName = factorName값
+                    };
+
+                    if (!block.Target.TryGetValue(layout.상품코드, out List<Layout>? list))
+                    {
+                        list = new List<Layout>();
+                        block.Target[layout.상품코드] = list;
+                    }
+
+                    list.Add(layout);
+
+                    AddLog(
+                        $"{block.TableName} 상품코드={layout.상품코드}, 담보코드={layout.담보코드}, " +
+                        $"Start={layout.Start}, Length={layout.Length}, Index={layout.Index}, FactorName={layout.FactorName}");
+
+                }
+                catch (Exception ex)
+                {
+                    AddLog($"Layout 시트의 행 {rowIndex} {block.TableName} 블록 처리 중 오류가 발생했습니다. 오류={ex.Message}");
+                }
             }
-            catch (Exception ex)
-            {
-                AddLog($"Layout 시트의 행 {rowIndex}을 읽는 중 오류가 발생했습니다. 오류={ex.Message}");
-            }
-
-
-
         }
+
+        AddLog("Layout 시트 로드 완료");
+
     }
 
     private void LoadProductSheet(ExcelDataReader edr)
@@ -347,6 +387,16 @@ public partial class MainPVViewModel : ObservableObject
                 
             }
         }
+    }
+
+    public int ToIntOrDefault(string s, int defaultVal)
+    {
+        if (string.IsNullOrWhiteSpace(s))
+        {
+            return defaultVal;
+        }
+
+        return int.TryParse(s, out int val) ? val : defaultVal;
     }
 
     private void AddLog(string message)

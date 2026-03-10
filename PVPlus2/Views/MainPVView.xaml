@@ -69,7 +69,7 @@
 
                 <TextBlock Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2" Text="상품코드"/>
                 <TextBox   Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" 
-                               Text="{Binding ProductCode, Mode=TwoWay}" VerticalAlignment="Center" Style="{StaticResource TextBox.Small}" />
+                               Text="{Binding 상품코드, Mode=TwoWay}" VerticalAlignment="Center" Style="{StaticResource TextBox.Small}" />
                 <Button    Grid.Row="2" Grid.Column="0" Content="시작" Style="{StaticResource ButtonPrimary}" Width="80" VerticalAlignment="Center"/>
                 <Button    Grid.Row="2" Grid.Column="1" Content="취소" Style="{StaticResource ButtonDanger}"  Width="80" IsEnabled="False" VerticalAlignment="Center"/>
                 <Grid Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="2">
@@ -117,7 +117,7 @@
                             <ColumnDefinition Width="3*"/>
                             <ColumnDefinition Width="7*"/>
                         </Grid.ColumnDefinitions>
-                        <CheckBox Grid.Column="0" Content="구분자" />
+                        <CheckBox Grid.Column="0" Content="구분자" IsChecked="{Binding 구분자체크, Mode=TwoWay}"/>
                         <TextBox  Grid.Column="1" Text="test1213" IsReadOnly="True" VerticalAlignment="Center" Margin="0,4,0,4" Style="{StaticResource TextBox.Small}" />
                     </Grid>
                     <Grid Grid.Row="2">
