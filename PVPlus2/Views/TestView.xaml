@@ -10,21 +10,50 @@
              d:DesignHeight="450"
              Background="{DynamicResource RegionBrush}">
     <Grid Margin="10">
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="*" />
-            <ColumnDefinition Width="*" />
-            <ColumnDefinition Width="*" />
-        </Grid.ColumnDefinitions>
 
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="*" />
         </Grid.RowDefinitions>
-        
-        <TextBlock Grid.Row="0" Grid.Column="0" Text="R0C0" />
-        <TextBlock Grid.Row="0" Grid.Column="1" Text="R0C1" />
-        <TextBlock Grid.Row="0" Grid.Column="2" Text="R0C2" />
+
+        <StackPanel Grid.Row="0"
+                    Orientation="Horizontal"
+                    Margin="0,0,0,10">
+            <Button Width="120"
+                    Height="32"
+                    Margin="0,0,10,0"
+                    Content="Parlot"
+                    Command="{Binding RunTestParlotCommand}" />
+
+            <Button Width="120"
+                    Height="32"
+                    Margin="0,0,10,0"
+                    Content="FastCompile"
+                    Command="{Binding RunTestFastCompileCommand}" />
+
+            <Button Width="220"
+                    Height="32"
+                    Content="FastCompile With LightExpress"
+                    Command="{Binding RunTestFastCompileWithLightExpressCommand}" />
+        </StackPanel>
+
+        <TextBox Grid.Row="1"
+                 Margin="0,0,0,10"
+                 AcceptsReturn="True"
+                 IsReadOnly="True"
+                 TextWrapping="Wrap"
+                 VerticalScrollBarVisibility="Auto"
+                 HorizontalScrollBarVisibility="Auto"
+                 Text="{Binding InputText, UpdateSourceTrigger=PropertyChanged}" />
+
+        <TextBox Grid.Row="2"
+                 AcceptsReturn="True"
+                 IsReadOnly="True"
+                 TextWrapping="Wrap"
+                 VerticalScrollBarVisibility="Auto"
+                 HorizontalScrollBarVisibility="Auto"
+                 Text="{Binding OutputText}" />
 
     </Grid>
 </UserControl>
