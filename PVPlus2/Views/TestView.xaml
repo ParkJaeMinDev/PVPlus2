@@ -17,26 +17,35 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <StackPanel Grid.Row="0"
-                    Orientation="Horizontal"
-                    Margin="0,0,0,10">
-            <Button Width="120"
-                    Height="32"
-                    Margin="0,0,10,0"
-                    Content="Parlot"
-                    Command="{Binding RunTestParlotCommand}" />
+        <DockPanel Grid.Row="0" Margin="0,0,0,10" LastChildFill="False">
+            <StackPanel Orientation="Horizontal"
+                        DockPanel.Dock="Left">
+                <Button Width="120"
+                        Height="32"
+                        Margin="0,0,10,0"
+                        Content="Parlot"
+                        Command="{Binding RunTestParlotCommand}" />
 
-            <Button Width="120"
-                    Height="32"
-                    Margin="0,0,10,0"
-                    Content="FastCompile"
-                    Command="{Binding RunTestFastCompileCommand}" />
+                <Button Width="220"
+                        Height="32"
+                        Margin="0,0,20,0"
+                        Content="TotalTest"
+                        Command="{Binding TotalTestCommand}" />
+            </StackPanel>
 
-            <Button Width="220"
-                    Height="32"
-                    Content="FastCompile With LightExpress"
-                    Command="{Binding RunTestFastCompileWithLightExpressCommand}" />
-        </StackPanel>
+            <StackPanel Orientation="Horizontal"
+                        VerticalAlignment="Center"
+                        DockPanel.Dock="Right">
+                <TextBlock Margin="0,0,8,0"
+                           VerticalAlignment="Center"
+                           Text="Array Length" />
+
+                <TextBox Width="120"
+                         Height="32"
+                         VerticalContentAlignment="Center"
+                         Text="{Binding ArrayLength, UpdateSourceTrigger=PropertyChanged}" />
+            </StackPanel>
+        </DockPanel>
 
         <TextBox Grid.Row="1"
                  Margin="0,0,0,10"
