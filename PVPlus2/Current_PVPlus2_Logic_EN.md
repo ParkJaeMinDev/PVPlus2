@@ -2,21 +2,22 @@
 
 ## Status
 
-`PVPlus2` is an early-stage WPF rewrite of the legacy PVPlus tool.
+`PVPlus2` is still an early-stage WPF rewrite of the legacy PVPlus tool.
 
 The project currently has:
 
 - a HandyControl tabbed main window
 - a `MainPV` screen bound to `MainPVViewModel`
+- a `TabTest` screen backed by `TestView` and `TestViewModel`
 - file-picking commands for Excel, P, V, and W files
 - a bound `ProductCode` input
 - a bound delimiter checkbox (`구분자체크`)
-- a text-based log area
+- text-based log areas
 - an `ExcelData` in-memory container
 - an `ExcelDataLoader` service that owns Excel workbook loading and sheet dispatch
-- an `ExpressionCompiler` service that currently supports only minimal arithmetic parsing with Parlot
+- an `ExpressionCompiler` service that builds compiled delegates with `System.Linq.Expressions`
 
-The app is still in the data-loading and parser-foundation stage. The legacy calculation pipeline has not been ported yet.
+The app is still in the data-loading and expression-runtime foundation stage. The legacy business calculation pipeline has not been ported yet.
 
 ## Window Structure
 
@@ -27,7 +28,7 @@ The app is still in the data-loading and parser-foundation stage. The legacy cal
 - `LTFHelper`
 - `TabTest`
 
-`MainPV` is the primary screen under active development.
+`MainPV` is the primary business screen. `TabTest` is the current sandbox for parser, runtime, and correctness experiments.
 
 ## MainPV Screen
 
@@ -45,7 +46,7 @@ The app is still in the data-loading and parser-foundation stage. The legacy cal
 
 ## MainPVViewModel
 
-`ViewModels/MainPVViewModel.cs` is now thinner than before.
+`ViewModels/MainPVViewModel.cs` is thinner than before.
 
 ### Observable fields
 
@@ -79,7 +80,7 @@ It now:
 
 ## ExcelDataLoader Service
 
-`Services/ExcelDataLoader.cs` now owns workbook loading and sheet dispatch.
+`Services/ExcelDataLoader.cs` owns workbook loading and sheet dispatch.
 
 ### Service input and state
 
@@ -90,7 +91,7 @@ The service currently receives:
 - delimiter-mode checkbox state
 - an optional log callback (`Action<string>`)
 
-It stores product code and delimiter mode in private fields during a load run.
+It stores product code and delimiter mode in private fields during one load run.
 
 ### Workbook opening
 
@@ -121,7 +122,7 @@ Unknown sheets are skipped.
 
 #### `LoadLayoutSheet`
 
-`Layout` loading is now partially implemented as real data population.
+`Layout` loading is partially implemented as real data population.
 
 Current behavior:
 
@@ -140,13 +141,13 @@ Current behavior:
 - if delimiter mode is disabled, skips rows with blank `Start`
 - converts `Start`, `Length`, and `Index` with `ToIntOrDefault(..., 0)`
 - stores layouts into `_excelData.PLayout`, `_excelData.VLayout`, and `_excelData.SLayout`
-- groups layouts by `상품코드` as `Dictionary<string, List<Layout>>`
+- groups layouts by product code as `Dictionary<string, List<Layout>>`
 
-This behavior intentionally mirrors the important filtering rules of legacy PVPlus layout loading.
+This intentionally mirrors the core filtering rules of legacy PVPlus layout loading.
 
 #### `LoadProductSheet`
 
-`Product` loading is now partially implemented.
+`Product` loading is also partially implemented.
 
 Current behavior:
 
@@ -177,109 +178,364 @@ The following methods still contain only loop skeletons:
 - `LoadSInfoSheet`
 - `LoadChkExprsSheet`
 
-## Model Direction
+## Expression Runtime Model
 
-The current model direction is to keep raw Excel text or simple scalar values first, then add compile/runtime layers later.
+The current expression runtime is no longer the old `x, y`-only prototype.
+
+The runtime is now built around:
+
+- a fixed `ExpressionContext` model
+- a static `ExpressionCompiler`
+- `System.Linq.Expressions`-based delegate generation
+- case-insensitive property/function lookup
+
+## ExpressionContext
+
+`Models/ExpressionContext.cs` is the current expression input model.
+
+Current shape:
+
+- public `double` properties from `a` through `z`
+
+Important current meaning:
+
+- expressions are compiled against `ExpressionContext`
+- identifiers are resolved to public instance properties on that type
+- property lookup is case-insensitive
 
 Examples:
 
-- `Product` already stores scalar values as numeric types where simple
-- `Rider` currently stores expression-related fields as raw `string`
-- `RateKeyByRateVariable` is already modeled as a dictionary
-- `ExcelData` is a public container that groups loaded data by domain
+- `x + y`
+- `X + Y`
+- `a * 3`
 
-This is a deliberate separation from legacy PVPlus, where loading and expression compilation were tightly mixed.
+All of the above resolve against `ExpressionContext`.
+
+## ExpressionFunctions
+
+`Services/ExpressionFunctions.cs` is the current static function container.
+
+Current state:
+
+- the class is `static`
+- methods are discovered via reflection at compiler startup
+- function lookup is case-insensitive
+- current test methods are:
+  - `test(long a)`
+  - `test(double a)`
+
+Function-call parsing already exists, but the benchmark harness is not using custom-function expressions yet.
 
 ## ExpressionCompiler
 
-`Services/ExpressionCompiler.cs` is the first Parlot-based parser prototype.
+`Services/ExpressionCompiler.cs` is the current parser/compiler entry point.
 
-### Current implemented behavior
+### Compile entry points
 
-It currently supports only:
+The service currently exposes:
 
-- numeric literals
-- parentheses
+- `CompileDouble(string text)` -> `Func<ExpressionContext, double>`
+- `CompileLong(string text)` -> `Func<ExpressionContext, long>`
+- `CompileBool(string text)` -> `Func<ExpressionContext, bool>`
+
+Current behavior:
+
+- input text is trimmed
+- the parser builds a `System.Linq.Expressions.Expression`
+- the final body is wrapped into a lambda with one `ExpressionContext context` parameter
+- `CompileDouble` and `CompileLong` explicitly convert the final result to the requested return type
+- `CompileBool` requires the final body type to already be `bool`
+
+### Supported literals
+
+Currently supported:
+
+- integer literals -> parsed as `long`
+  - examples: `1`, `2`, `100`
+- decimal literals -> parsed as `double`
+  - examples: `1.0`, `10.5`, `.5`
+- boolean literals
+  - `True`
+  - `False`
+  - case-insensitive
+
+Currently not supported:
+
+- scientific notation
+  - `1e10`
+  - `1e-5`
+- numeric group separators
+  - `1,000`
+- string literals
+- percent literals such as `2.75%`
+
+`%` is currently treated only as the modulo operator.
+
+### Supported arithmetic operators
+
+Currently supported:
+
+- unary `+`
+- unary `-`
 - binary `+`
 - binary `-`
 - binary `*`
 - binary `/`
+- binary `%`
+- binary `^`
 
-### Current design decisions
+Important current rules:
 
-The current compiler design is intentionally simple:
+- `^` is implemented with `Expression.Power(...)`
+- `^` is right-associative
+  - `2 ^ 3 ^ 2` means `2 ^ (3 ^ 2)`
+- `%` uses numeric remainder semantics
+- `/` always promotes operands to `double`
 
-- all numeric parsing is treated as `double`
-- evaluation result type is `double`
-- a static compiled parser is reused
-- `Eof()` is applied so the full input must be consumed
-- the compiler currently parses and evaluates immediately, not to a custom AST yet
+Current numeric promotion rules:
 
-This means an expression like `1 / 1000` is expected to produce `0.001` in the new design.
+- `long op long` stays `long` for `+`, `-`, `*`, `%`
+- mixed `long`/`double` is promoted to `double`
+- `/` converts both sides to `double`
+- `^` converts both sides to `double`
 
-### Currently unimplemented operators
+### Supported comparison operators
 
-Flee-style operators not implemented yet include:
+Currently supported:
 
-- `%`
-- `^`
 - `=`
+- `==`
+- `!=`
 - `<>`
-- `<`
 - `>`
-- `<=`
 - `>=`
-- `And`
-- `Or`
-- `Xor`
-- `Not`
-- `<<`
-- `>>`
+- `<`
+- `<=`
 
-Also not fully implemented yet:
+Current meaning:
 
-- general unary minus such as `-(1+2)`
-- unary plus
+- `=` and `==` both mean equality
+- `!=` and `<>` both mean inequality
+- relational operators (`>`, `>=`, `<`, `<=`) are numeric-only
+- equality/inequality support:
+  - numeric vs numeric
+  - bool vs bool
 
-### Currently unimplemented functions
+Examples:
 
-No function-call support exists yet.
+- `1 = 1`
+- `1 == 1`
+- `1 <> 2`
+- `1 != 2`
+- `x >= y`
 
-That means the compiler does not yet support expressions such as:
+### Supported logical operators
 
-- `If(...)`
-- `Abs(...)`
-- `Min(...)`
-- `Max(...)`
-- `Round(...)`
-- `Floor(...)`
-- `Ceiling(...)`
-- `Pow(...)`
-- `cast(...)`
-- `in`
-- project-specific helper functions
+Currently supported:
 
-### Currently unimplemented variable and runtime binding features
+- `NOT`
+- `AND`
+- `OR`
 
-The compiler does not yet support variable references.
+All three are case-insensitive.
 
-Examples not yet supported:
+Examples:
 
-- factor variables like `F1` to `F10`
-- rate variables like `q1` to `q30`
-- MP factors like `n`, `m`, `Age`, `Freq`, `Jong`, `ElapseYear`
-- S factors like `S1` to `S10`
-- check/result variables like `NP0`, `GP0`, `V0`, `W0`
-- temporary variables such as `TempStr1`, `TempCK0`
+- `NOT (1 == 2)`
+- `TRUE AND NOT FALSE`
+- `x > y OR y > x`
 
-Also not yet supported:
+Current meaning:
 
-- array indexing such as `VWhole[0]`
-- property/member access
+- `NOT` requires a bool operand
+- `AND` and `OR` require bool operands
+- the compiler emits `Expression.Not`, `Expression.AndAlso`, and `Expression.OrElse`
+
+### Parser precedence
+
+Current precedence order is:
+
+1. primary
+   - literals
+   - identifiers
+   - function calls
+   - parenthesized expressions
+2. unary
+   - `+`
+   - `-`
+3. power
+   - `^` (right-associative)
+4. multiplicative
+   - `*`
+   - `/`
+   - `%`
+5. additive
+   - `+`
+   - `-`
+6. relational
+   - `>`
+   - `>=`
+   - `<`
+   - `<=`
+7. equality
+   - `=`
+   - `==`
+   - `!=`
+   - `<>`
+8. logical not
+   - `NOT`
+9. logical and
+   - `AND`
+10. logical or
+   - `OR`
+
+### Case sensitivity
+
+The current compiler is intentionally case-insensitive for the user-facing expression surface wherever reasonable.
+
+Current case-insensitive behavior:
+
+- property lookup on `ExpressionContext`
+- function lookup in `ExpressionFunctions`
+- boolean keywords `True`, `False`
+- logical keywords `AND`, `OR`, `NOT`
+
+Examples:
+
+- `X + y`
+- `true or FALSE`
+- `TeSt(1)` once a function is actually used in a test expression
+
+The symbolic operators remain symbolic and are not affected by case.
+
+### Function-call support
+
+Current syntax:
+
+- `name(arg1, arg2, ...)`
+
+Current binding rules:
+
+- function names are resolved from `ExpressionFunctions`
+- public static methods only
+- overload resolution is based on:
+  - exact type match first
+  - then `long -> double`
+  - then `double -> long`
+- if more than one overload has the same score, the call is treated as ambiguous
+
+### Important current runtime behavior
+
+The current implementation has a few important edge behaviors:
+
+- `1 / 0` does not throw in `CompileDouble`
+  - it becomes `double` division
+  - current result is positive infinity
+- `0 / 0` produces `NaN`
+- `1 % 0` can still throw `DivideByZeroException`
+  - because integer remainder can stay in the `long` pipeline
+- `--1` currently parses successfully
+- unary plus is currently a pass-through operator
+  - this means `+True` currently compiles successfully
+- chained comparisons such as `1 < 2 < 3` are not supported as a valid boolean chain
+  - the compiler reaches a type mismatch on the second comparison
+
+### Current limitations
+
+Still not implemented:
+
 - string expressions
-- boolean expressions
-- dynamic mixed-type expressions
-- runtime delegate generation over a variable context
+- string comparison
+- scientific-notation numbers
+- numeric group separators
+- percent literals
+- ternary syntax
+- dedicated `If(...)` support
+- general function libraries beyond the current test methods
+- domain-aware business variable binding beyond `ExpressionContext`
+- array indexing in the general expression language
+- legacy Flee-compatible full feature parity
+
+## TestView and Test Harness
+
+`Views/TestView.xaml` is the current parser/runtime test screen used from the `TabTest` tab.
+
+### Current UI
+
+The screen currently contains:
+
+- a `Parlot` button bound to `RunTestParlotCommand`
+- a `TotalTest` button bound to `TotalTestCommand`
+- an `Array Length` input bound to `ArrayLength`
+- a read-only multiline `InputText` box
+- a read-only multiline `OutputText` log box
+
+`Views/TestView.xaml.cs` assigns `DataContext = new TestViewModel();` in code-behind.
+
+### Current benchmark/test flow
+
+`ViewModels/TestViewModel.cs` is no longer measuring compile cost.
+
+Current `TotalTest()` behavior:
+
+- clears `OutputText`
+- validates `ArrayLength > 0`
+- builds four expression groups:
+  - valid numeric expressions
+  - invalid numeric expressions
+  - valid bool expressions
+  - invalid bool expressions
+- compiles valid numeric expressions once with `CompileDouble`
+- compiles valid bool expressions once with `CompileBool`
+- generates random `xValues` and `yValues`
+- evaluates compiled numeric expressions repeatedly
+- evaluates matching native C# numeric lambdas repeatedly
+- evaluates compiled bool expressions repeatedly
+- evaluates matching native C# bool lambdas repeatedly
+- validates expected-failure expressions by:
+  - compiling them
+  - invoking them once
+  - treating thrown exceptions as success
+
+### Current output sections
+
+`TotalTest()` currently prints:
+
+- numeric evaluation time table
+- numeric checksum comparison table
+- bool evaluation time table
+- bool true-count comparison table
+- invalid numeric expression validation table
+- invalid bool expression validation table
+
+### Current checksum policy
+
+Numeric validation currently compares:
+
+- compiler checksum
+- native checksum
+- absolute difference
+- match flag
+
+Special cases are treated explicitly:
+
+- `NaN` vs `NaN` is considered a match
+- `+Infinity` vs `+Infinity` is considered a match
+- `-Infinity` vs `-Infinity` is considered a match
+
+Bool validation compares:
+
+- the total count of `true` results across repeated runs
+
+### Current test intent
+
+The current test screen is not only a microbenchmark harness.
+
+It now also acts as:
+
+- a parser regression check
+- a semantic parity check against native C#
+- an expected-error verification harness
 
 ## Current Limitations
 
@@ -287,17 +543,19 @@ Current limitations include:
 
 - only `Layout` and `Product` sheet loading are partially implemented
 - rider/rate/expense/variable-change/check-expression sheets are not loaded yet
-- expression parsing is still a minimal arithmetic prototype
-- no variable-aware evaluation exists yet
-- no Flee-compatible expression runtime exists yet
+- the expression runtime is still isolated from real business rule execution
+- `ExpressionContext` is still a fixed testing-oriented property bag
+- function support exists structurally, but only trivial test functions are currently registered
+- no string or domain-object expression model exists yet
 - no legacy calculation classes have been connected yet
 
 ## Next Direction
 
 The natural next steps are:
 
-1. implement `LoadRiderSheet` using the current raw-string model strategy
-2. implement the remaining sheet loaders
-3. extend `ExpressionCompiler` from arithmetic-only parsing to variables and functions
-4. build a runtime evaluation layer over loaded rule data
-5. connect compiled expressions to the future calculation pipeline
+1. implement the remaining Excel sheet loaders
+2. decide the final shape of business variable binding beyond `ExpressionContext`
+3. expand the registered function set in `ExpressionFunctions`
+4. add business-focused expression tests instead of only edge-case/runtime tests
+5. connect loaded rule data to a runtime evaluation layer
+6. connect the future calculation pipeline
