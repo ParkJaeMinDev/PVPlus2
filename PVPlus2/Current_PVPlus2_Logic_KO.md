@@ -186,6 +186,7 @@
 
 - 고정된 `ExpressionContext` 모델
 - static `ExpressionCompiler`
+- Parlot AST 파싱 단계와 AST -> `System.Linq.Expressions.Expression` 바인딩 단계
 - `System.Linq.Expressions` 기반 delegate 생성
 - 대소문자 무시 property/function lookup
 
@@ -237,14 +238,17 @@
 - `CompileDouble(string text)` -> `Func<ExpressionContext, double>`
 - `CompileLong(string text)` -> `Func<ExpressionContext, long>`
 - `CompileBool(string text)` -> `Func<ExpressionContext, bool>`
+- `CompileString(string text)` -> `Func<ExpressionContext, string>`
 
 현재 동작:
 
 - 입력 문자열을 trim한다.
-- parser가 `System.Linq.Expressions.Expression`을 만든다.
+- parser가 먼저 `AstNode` 트리를 만든다.
+- `BindSyntax(...)`가 AST를 `System.Linq.Expressions.Expression`으로 변환한다.
 - 최종 body를 `ExpressionContext context` 하나를 받는 lambda로 감싼다.
 - `CompileDouble`, `CompileLong`은 마지막 결과를 요청된 타입으로 명시적으로 변환한다.
 - `CompileBool`은 최종 body 타입이 이미 `bool`이어야만 한다.
+- `CompileString`은 최종 body 타입이 이미 `string`이어야만 한다.
 
 ### 지원 리터럴
 
@@ -254,6 +258,8 @@
   - 예: `1`, `2`, `100`
 - 소수 리터럴 -> `double`
   - 예: `1.0`, `10.5`, `.5`
+- string 리터럴 -> AST에서는 `Parlot.TextSpan`으로 보관하고 바인딩 시 `string`으로 materialize
+  - 예: `"hello"`, `"A"`, `"literal with space"`
 - bool 리터럴
   - `True`
   - `False`
@@ -266,7 +272,6 @@
   - `1e-5`
 - 천 단위 구분 기호
   - `1,000`
-- string literal
 - `2.75%` 같은 퍼센트 literal
 
 현재 `%`는 오직 modulo 연산자로만 사용된다.
@@ -291,6 +296,9 @@
   - `2 ^ 3 ^ 2`는 `2 ^ (3 ^ 2)` 의미
 - `%`는 숫자 나머지 연산
 - `/`는 항상 `double` 나눗셈으로 승격
+- `+`는 좌우 중 하나가 `string`이면 문자열 concat으로 해석
+- 현재 문자열 concat은 pairwise `string.Concat(object, object)`로 처리
+- string은 binary `+`에서만 허용
 
 현재 숫자 승격 규칙:
 
@@ -320,6 +328,8 @@
 - 같음/다름 비교는 다음 조합을 지원
   - 숫자 vs 숫자
   - bool vs bool
+  - string vs string
+- string과 비-string이 섞인 같음/다름 비교는 예외 처리
 
 예:
 
@@ -328,6 +338,8 @@
 - `1 <> 2`
 - `1 != 2`
 - `x >= y`
+- `"a" = "a"`
+- `"a" <> "b"`
 
 ### 지원 논리 연산자
 
@@ -434,22 +446,25 @@
 - `1 % 0`은 `DivideByZeroException`이 날 수 있음
   - integer remainder 경로가 남아 있기 때문
 - `--1`은 현재 정상 파싱된다.
-- unary plus는 현재 pass-through 동작
+- unary plus는 string이 아닌 타입에서는 pass-through 동작
   - 그래서 `+True`도 현재는 컴파일된다.
+  - `+"a"`는 허용되지 않는다.
 - `1 < 2 < 3` 같은 chained comparison은 지원하지 않는다.
   - 두 번째 비교에서 타입 불일치 예외가 난다.
+- `"a" > "b"` 같은 string 관계 비교는 지원하지 않는다.
+- `"a" == 1` 같은 string/비-string 혼합 equality는 지원하지 않는다.
 
 ### 현재 미구현
 
 아직 다음은 구현되지 않았다.
 
-- string expression
-- string comparison
 - scientific notation 숫자
 - 천 단위 구분자 숫자
 - percent literal
 - ternary syntax
 - 전용 `If(...)` 지원
+- string 관계 비교
+- literal/concat/equality 외의 일반 string 함수군
 - test 함수 외의 실제 함수군
 - `ExpressionContext`를 넘는 업무 도메인 변수 바인딩
 - 일반 배열 인덱싱
@@ -473,24 +488,31 @@
 
 ### 현재 TotalTest 흐름
 
-`ViewModels/TestViewModel.cs`는 더 이상 compile 시간 벤치마크를 하지 않는다.
+`ViewModels/TestViewModel.cs`는 이제 typed regression + microbenchmark 하네스 역할을 한다.
 
 현재 `TotalTest()`는 다음을 수행한다.
 
 - `OutputText` 초기화
 - `ArrayLength > 0` 검사
-- 수식을 4개 그룹으로 구성
-  - 정상 Numeric
-  - 오류 예상 Numeric
+- 수식을 8개 그룹으로 구성
+  - 정상 Double
+  - 오류 예상 Double
+  - 정상 Long
+  - 오류 예상 Long
   - 정상 Boolean
   - 오류 예상 Boolean
-- 정상 Numeric 수식을 `CompileDouble`로 1회씩 compile
-- 정상 Boolean 수식을 `CompileBool`로 1회씩 compile
-- 랜덤 `xValues`, `yValues` 생성
-- 컴파일된 Numeric 수식을 반복 평가
-- 같은 의미의 native C# Numeric lambda를 반복 평가
-- 컴파일된 Boolean 수식을 반복 평가
-- 같은 의미의 native C# Boolean lambda를 반복 평가
+  - 정상 String
+  - 오류 예상 String
+- 모든 그룹을 정리한 `InputText`를 다시 구성
+- 정상 수식에 대해 compile 시간 벤치마크 수행
+  - `CompileDouble`
+  - `CompileLong`
+  - `CompileBool`
+  - `CompileString`
+- 마지막 compile 결과를 타입별 cache에 저장
+- 고정 seed 기반 랜덤 `xValues`, `yValues` 생성
+- 네 타입 모두에 대해 compiler delegate 평가 시간 측정
+- 네 타입 모두에 대해 native C# delegate 평가 시간 측정
 - 오류 예상 수식은
   - compile
   - 1회 evaluate
@@ -502,16 +524,31 @@
 
 `TotalTest()`는 현재 다음을 출력한다.
 
-- 정상 Numeric 평가 시간 표
-- 정상 Numeric checksum 비교 표
-- 정상 Boolean 평가 시간 표
-- 정상 Boolean true-count 비교 표
-- 오류 예상 Numeric 검증 표
-- 오류 예상 Boolean 검증 표
+- typed benchmark 요약 헤더
+- compile 시간 표
+  - double
+  - long
+  - bool
+  - string
+- 평가 시간 표
+  - double
+  - long
+  - bool
+  - string
+- checksum/hash 비교 표
+  - double
+  - long
+  - bool
+  - string
+- 오류 예상 검증 표
+  - double
+  - long
+  - bool
+  - string
 
 ### 현재 checksum 정책
 
-Numeric 검증은 다음을 비교한다.
+Double 검증은 다음을 비교한다.
 
 - compiler checksum
 - native checksum
@@ -528,6 +565,20 @@ Boolean 검증은 다음을 비교한다.
 
 - 반복 실행 전체에서 `true`가 나온 횟수
 
+Long 검증은 다음을 비교한다.
+
+- compiler checksum
+- native checksum
+- absolute difference
+- match 여부
+
+String 검증은 다음을 비교한다.
+
+- compiler FNV-1a hash checksum
+- native FNV-1a hash checksum
+- 반복 실행 전체의 exact mismatch count
+- match 여부
+
 ### 현재 테스트 목적
 
 현재 테스트 화면은 단순한 microbenchmark 화면만은 아니다.
@@ -537,6 +588,7 @@ Boolean 검증은 다음을 비교한다.
 - parser regression check
 - native C#와의 의미 일치 검증
 - 예상 오류 수식 검증
+- `double`, `long`, `bool`, `string` 4타입 compile/evaluate benchmark
 
 ## 현재 한계
 
@@ -547,7 +599,11 @@ Boolean 검증은 다음을 비교한다.
 - 수식 런타임은 아직 실제 업무 rule 실행과 분리된 상태
 - `ExpressionContext`는 아직 테스트 중심의 고정 property bag
 - 함수 호출 구조는 있지만 실제 함수군은 test 메서드 수준
-- string/객체 기반 수식 모델이 아직 없음
+- string 지원은 아직 의도적으로 좁다.
+  - string literal
+  - string `+` concat
+  - 양쪽이 모두 string일 때만 `=`, `==`, `!=`, `<>`
+- 객체 기반 수식 모델은 아직 없음
 - legacy 계산 클래스와 아직 연결되지 않음
 
 ## 다음 방향
@@ -557,6 +613,7 @@ Boolean 검증은 다음을 비교한다.
 1. 나머지 Excel 시트 로더 구현
 2. `ExpressionContext`를 넘어서는 실제 업무 변수 바인딩 설계
 3. `ExpressionFunctions`에 실제 함수군 추가
-4. edge case 중심 테스트를 업무 규칙 중심 테스트로 확장
-5. 로드된 rule 데이터와 런타임 평가 계층 연결
-6. 이후 계산 파이프라인 연결
+4. 현재 concat/equality 중심의 string 지원을 어디까지 확장할지 결정
+5. edge case 중심 테스트를 업무 규칙 중심 테스트로 확장
+6. 로드된 rule 데이터와 런타임 평가 계층 연결
+7. 이후 계산 파이프라인 연결

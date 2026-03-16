@@ -186,6 +186,7 @@ The runtime is now built around:
 
 - a fixed `ExpressionContext` model
 - a static `ExpressionCompiler`
+- a Parlot AST parse step plus a binding step that builds `System.Linq.Expressions.Expression`
 - `System.Linq.Expressions`-based delegate generation
 - case-insensitive property/function lookup
 
@@ -237,14 +238,17 @@ The service currently exposes:
 - `CompileDouble(string text)` -> `Func<ExpressionContext, double>`
 - `CompileLong(string text)` -> `Func<ExpressionContext, long>`
 - `CompileBool(string text)` -> `Func<ExpressionContext, bool>`
+- `CompileString(string text)` -> `Func<ExpressionContext, string>`
 
 Current behavior:
 
 - input text is trimmed
-- the parser builds a `System.Linq.Expressions.Expression`
+- the parser builds an `AstNode` tree first
+- `BindSyntax(...)` converts the AST into a `System.Linq.Expressions.Expression`
 - the final body is wrapped into a lambda with one `ExpressionContext context` parameter
 - `CompileDouble` and `CompileLong` explicitly convert the final result to the requested return type
 - `CompileBool` requires the final body type to already be `bool`
+- `CompileString` requires the final body type to already be `string`
 
 ### Supported literals
 
@@ -254,6 +258,8 @@ Currently supported:
   - examples: `1`, `2`, `100`
 - decimal literals -> parsed as `double`
   - examples: `1.0`, `10.5`, `.5`
+- string literals -> parsed into AST as `Parlot.TextSpan`, materialized to `string` during binding
+  - examples: `"hello"`, `"A"`, `"literal with space"`
 - boolean literals
   - `True`
   - `False`
@@ -266,7 +272,6 @@ Currently not supported:
   - `1e-5`
 - numeric group separators
   - `1,000`
-- string literals
 - percent literals such as `2.75%`
 
 `%` is currently treated only as the modulo operator.
@@ -291,6 +296,9 @@ Important current rules:
   - `2 ^ 3 ^ 2` means `2 ^ (3 ^ 2)`
 - `%` uses numeric remainder semantics
 - `/` always promotes operands to `double`
+- `+` becomes string concatenation if either side is `string`
+- string concatenation currently uses pairwise `string.Concat(object, object)`
+- strings are only allowed in binary `+`
 
 Current numeric promotion rules:
 
@@ -320,6 +328,8 @@ Current meaning:
 - equality/inequality support:
   - numeric vs numeric
   - bool vs bool
+  - string vs string
+- mixed string/non-string equality is rejected
 
 Examples:
 
@@ -328,6 +338,8 @@ Examples:
 - `1 <> 2`
 - `1 != 2`
 - `x >= y`
+- `"a" = "a"`
+- `"a" <> "b"`
 
 ### Supported logical operators
 
@@ -435,22 +447,25 @@ The current implementation has a few important edge behaviors:
 - `1 % 0` can still throw `DivideByZeroException`
   - because integer remainder can stay in the `long` pipeline
 - `--1` currently parses successfully
-- unary plus is currently a pass-through operator
+- unary plus is currently a pass-through operator for non-string operands
   - this means `+True` currently compiles successfully
+  - `+"a"` is rejected
 - chained comparisons such as `1 < 2 < 3` are not supported as a valid boolean chain
   - the compiler reaches a type mismatch on the second comparison
+- string relational comparisons such as `"a" > "b"` are not supported
+- mixed string/non-string equality such as `"a" == 1` is rejected
 
 ### Current limitations
 
 Still not implemented:
 
-- string expressions
-- string comparison
 - scientific-notation numbers
 - numeric group separators
 - percent literals
 - ternary syntax
 - dedicated `If(...)` support
+- string relational operators
+- general string function support beyond literal/concat/equality
 - general function libraries beyond the current test methods
 - domain-aware business variable binding beyond `ExpressionContext`
 - array indexing in the general expression language
@@ -474,24 +489,31 @@ The screen currently contains:
 
 ### Current benchmark/test flow
 
-`ViewModels/TestViewModel.cs` is no longer measuring compile cost.
+`ViewModels/TestViewModel.cs` is now a typed regression and microbenchmark harness.
 
 Current `TotalTest()` behavior:
 
 - clears `OutputText`
 - validates `ArrayLength > 0`
-- builds four expression groups:
-  - valid numeric expressions
-  - invalid numeric expressions
+- builds eight expression groups:
+  - valid double expressions
+  - invalid double expressions
+  - valid long expressions
+  - invalid long expressions
   - valid bool expressions
   - invalid bool expressions
-- compiles valid numeric expressions once with `CompileDouble`
-- compiles valid bool expressions once with `CompileBool`
-- generates random `xValues` and `yValues`
-- evaluates compiled numeric expressions repeatedly
-- evaluates matching native C# numeric lambdas repeatedly
-- evaluates compiled bool expressions repeatedly
-- evaluates matching native C# bool lambdas repeatedly
+  - valid string expressions
+  - invalid string expressions
+- rebuilds `InputText` with all expression groups
+- benchmarks compile time for each valid expression with:
+  - `CompileDouble`
+  - `CompileLong`
+  - `CompileBool`
+  - `CompileString`
+- stores the last compiled delegate for each expression in typed caches
+- generates deterministic random `xValues` and `yValues`
+- benchmarks compiled delegate evaluation for all four result types
+- benchmarks matching native C# delegates for all four result types
 - validates expected-failure expressions by:
   - compiling them
   - invoking them once
@@ -501,16 +523,31 @@ Current `TotalTest()` behavior:
 
 `TotalTest()` currently prints:
 
-- numeric evaluation time table
-- numeric checksum comparison table
-- bool evaluation time table
-- bool true-count comparison table
-- invalid numeric expression validation table
-- invalid bool expression validation table
+- a typed benchmark summary header
+- compile time tables for:
+  - double
+  - long
+  - bool
+  - string
+- evaluation time tables for:
+  - double
+  - long
+  - bool
+  - string
+- checksum/hash comparison tables for:
+  - double
+  - long
+  - bool
+  - string
+- invalid expression validation tables for:
+  - double
+  - long
+  - bool
+  - string
 
 ### Current checksum policy
 
-Numeric validation currently compares:
+Double validation currently compares:
 
 - compiler checksum
 - native checksum
@@ -527,6 +564,20 @@ Bool validation compares:
 
 - the total count of `true` results across repeated runs
 
+Long validation compares:
+
+- compiler checksum
+- native checksum
+- absolute difference
+- match flag
+
+String validation compares:
+
+- compiler FNV-1a hash checksum
+- native FNV-1a hash checksum
+- exact mismatch count across repeated runs
+- match flag
+
 ### Current test intent
 
 The current test screen is not only a microbenchmark harness.
@@ -536,6 +587,7 @@ It now also acts as:
 - a parser regression check
 - a semantic parity check against native C#
 - an expected-error verification harness
+- a typed compile/evaluate benchmark for `double`, `long`, `bool`, and `string`
 
 ## Current Limitations
 
@@ -546,7 +598,11 @@ Current limitations include:
 - the expression runtime is still isolated from real business rule execution
 - `ExpressionContext` is still a fixed testing-oriented property bag
 - function support exists structurally, but only trivial test functions are currently registered
-- no string or domain-object expression model exists yet
+- string support is still intentionally narrow:
+  - string literals
+  - string `+` concatenation
+  - string equality/inequality only when both sides are string
+- no domain-object expression model exists yet
 - no legacy calculation classes have been connected yet
 
 ## Next Direction
@@ -556,6 +612,7 @@ The natural next steps are:
 1. implement the remaining Excel sheet loaders
 2. decide the final shape of business variable binding beyond `ExpressionContext`
 3. expand the registered function set in `ExpressionFunctions`
-4. add business-focused expression tests instead of only edge-case/runtime tests
-5. connect loaded rule data to a runtime evaluation layer
-6. connect the future calculation pipeline
+4. decide how far string support should go beyond the current concat/equality subset
+5. add business-focused expression tests instead of only edge-case/runtime tests
+6. connect loaded rule data to a runtime evaluation layer
+7. connect the future calculation pipeline

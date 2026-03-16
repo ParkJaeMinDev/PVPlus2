@@ -15,8 +15,7 @@ public class ExpressionCompiler
     private static readonly ParameterExpression _contextParameter =
         Expression.Parameter(typeof(ExpressionContext), "context");
 
-    private static readonly Parser<Expression> _parser =
-        BuildParser(typeof(ExpressionContext), _contextParameter);
+    private static readonly Parser<AstNode> _parser = BuildParser();
 
     private static readonly Dictionary<string, MethodInfo[]> _registeredFunctions =
         typeof(ExpressionFunctions)
@@ -24,35 +23,46 @@ public class ExpressionCompiler
             .GroupBy(static method => method.Name, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(static group => group.Key, static group => group.ToArray(), StringComparer.OrdinalIgnoreCase);
 
+    private static readonly MethodInfo _stringConcatMethod =
+        typeof(string).GetMethod(nameof(string.Concat), new[] { typeof(object), typeof(object) })!;
+
     public static Func<ExpressionContext, double> CompileDouble(string text)
     {
-        var key = NormalizeExpressionText(text);
-        var body = _parser.Parse(key) ?? throw new FormatException($"잘못된 수식입니다: {key}");
-        body = Expression.Convert(body, typeof(double));
+        var body = BindExpression(text);
+        body = ConvertReturnExpression(body, typeof(double));
 
         return Expression.Lambda<Func<ExpressionContext, double>>(body, _contextParameter).Compile();
     }
 
     public static Func<ExpressionContext, long> CompileLong(string text)
     {
-        var key = NormalizeExpressionText(text);
-        var body = _parser.Parse(key) ?? throw new FormatException($"잘못된 수식입니다: {key}");
-        body = Expression.Convert(body, typeof(long));
+        var body = BindExpression(text);
+        body = ConvertReturnExpression(body, typeof(long));
 
         return Expression.Lambda<Func<ExpressionContext, long>>(body, _contextParameter).Compile();
     }
 
     public static Func<ExpressionContext, bool> CompileBool(string text)
     {
-        var key = NormalizeExpressionText(text);
-        var body = _parser.Parse(key) ?? throw new FormatException($"잘못된 수식입니다: {key}");
-
-        if (body.Type != typeof(bool))
-        {
-            throw new NotSupportedException($"bool 반환 식이 아닙니다. 현재 타입: {body.Type}");
-        }
+        var body = BindExpression(text);
+        body = ConvertReturnExpression(body, typeof(bool));
 
         return Expression.Lambda<Func<ExpressionContext, bool>>(body, _contextParameter).Compile();
+    }
+
+    public static Func<ExpressionContext, string> CompileString(string text)
+    {
+        var body = BindExpression(text);
+        body = ConvertReturnExpression(body, typeof(string));
+
+        return Expression.Lambda<Func<ExpressionContext, string>>(body, _contextParameter).Compile();
+    }
+
+    private static Expression BindExpression(string text)
+    {
+        var key = NormalizeExpressionText(text);
+        var syntax = _parser.Parse(key) ?? throw new FormatException($"잘못된 수식입니다: {key}");
+        return BindSyntax(syntax);
     }
 
     private static string NormalizeExpressionText(string text)
@@ -65,28 +75,29 @@ public class ExpressionCompiler
         return text.Trim();
     }
 
-    private static Parser<Expression> BuildParser(Type contextType, ParameterExpression contextParameter)
+    private static Parser<AstNode> BuildParser()
     {
-        var expr = Deferred<Expression>();
+        var expr = Deferred<AstNode>();
 
         var number = Terms.Pattern(static c => IsNumberLiteralChar(c), 1)
-            .Then<Expression>(static text => CreateNumberLiteralExpression(text));
+            .Then<AstNode>(static text => CreateNumberLiteralNode(text));
+
+        var stringLiteral = Terms.String(StringLiteralQuotes.Double)
+            .Then<AstNode>(static text => new StringLiteralNode(text));
 
         var identifierName = Terms.Identifier(
                 static c => IsIdentifierStartChar(c),
                 static c => IsIdentifierChar(c))
             .Then(static text => text.ToString());
 
-        var identifier = Terms.Identifier(
-                static c => IsIdentifierStartChar(c),
-                static c => IsIdentifierChar(c))
-            .Then<Expression>(text => CreatePropertyExpression(text, contextType, contextParameter));
+        var identifier = identifierName
+            .Then<AstNode>(static name => new IdentifierNode(name));
 
         var trueLiteral = Terms.Keyword("True", caseInsensitive: true)
-            .Then<Expression>(_ => Expression.Constant(true));
+            .Then<AstNode>(_ => new BooleanLiteralNode(true));
 
         var falseLiteral = Terms.Keyword("False", caseInsensitive: true)
-            .Then<Expression>(_ => Expression.Constant(false));
+            .Then<AstNode>(_ => new BooleanLiteralNode(false));
 
         var plusToken = Terms.Char('+');
         var minusToken = Terms.Char('-');
@@ -113,72 +124,186 @@ public class ExpressionCompiler
 
         var functionCall = identifierName
             .And(Between(leftParenToken, Separated(commaToken, expr), rightParenToken))
-            .Then<Expression>(tuple => CreateFunctionCallExpression(tuple.Item1, tuple.Item2));
+            .Then<AstNode>(tuple => new FunctionCallNode(tuple.Item1, tuple.Item2.ToArray()));
 
-        var primary = OneOf<Expression>(
+        var primary = OneOf<AstNode>(
             functionCall,
             trueLiteral,
             falseLiteral,
+            stringLiteral,
             number,
             identifier,
             Between(leftParenToken, expr, rightParenToken)
         );
 
         var unary = primary.Unary(
-            (plusToken, static x => x),
-            (minusToken, static x => Expression.Negate(x))
+            (plusToken, static x => new UnaryNode(UnaryOperator.UnaryPlus, x)),
+            (minusToken, static x => new UnaryNode(UnaryOperator.Negate, x))
         );
 
         var power = unary.RightAssociative(
-            (powerToken, static (a, b) => Expression.Power(
-                ConvertNumericExpressionToDouble(a),
-                ConvertNumericExpressionToDouble(b)))
+            (powerToken, static (a, b) => new BinaryNode(BinaryOperator.Power, a, b))
         );
 
         var multiplicative = power.LeftAssociative(
-            (multiplyToken, static (a, b) => BuildNumericBinaryExpression(a, b, Expression.Multiply)),
-            (divideToken, static (a, b) => BuildDivideExpression(a, b)),
-            (moduloToken, static (a, b) => BuildNumericBinaryExpression(a, b, Expression.Modulo))
+            (multiplyToken, static (a, b) => new BinaryNode(BinaryOperator.Multiply, a, b)),
+            (divideToken, static (a, b) => new BinaryNode(BinaryOperator.Divide, a, b)),
+            (moduloToken, static (a, b) => new BinaryNode(BinaryOperator.Modulo, a, b))
         );
 
         var additive = multiplicative.LeftAssociative(
-            (plusToken, static (a, b) => BuildNumericBinaryExpression(a, b, Expression.Add)),
-            (minusToken, static (a, b) => BuildNumericBinaryExpression(a, b, Expression.Subtract))
+            (plusToken, static (a, b) => new BinaryNode(BinaryOperator.Add, a, b)),
+            (minusToken, static (a, b) => new BinaryNode(BinaryOperator.Subtract, a, b))
         );
 
         var relational = additive.LeftAssociative(
-            (greaterEqualToken, static (a, b) => BuildRelationalExpression(a, b, Expression.GreaterThanOrEqual)),
-            (lessEqualToken, static (a, b) => BuildRelationalExpression(a, b, Expression.LessThanOrEqual)),
-            (greaterToken, static (a, b) => BuildRelationalExpression(a, b, Expression.GreaterThan)),
-            (lessToken, static (a, b) => BuildRelationalExpression(a, b, Expression.LessThan))
+            (greaterEqualToken, static (a, b) => new BinaryNode(BinaryOperator.GreaterThanOrEqual, a, b)),
+            (lessEqualToken, static (a, b) => new BinaryNode(BinaryOperator.LessThanOrEqual, a, b)),
+            (greaterToken, static (a, b) => new BinaryNode(BinaryOperator.GreaterThan, a, b)),
+            (lessToken, static (a, b) => new BinaryNode(BinaryOperator.LessThan, a, b))
         );
 
         var equality = relational.LeftAssociative(
-            (equalEqualToken, static (a, b) => BuildEqualityExpression(a, b)),
-            (notEqualToken, static (a, b) => BuildNotEqualExpression(a, b)),
-            (angleNotEqualToken, static (a, b) => BuildNotEqualExpression(a, b)),
-            (equalToken, static (a, b) => BuildEqualityExpression(a, b))
+            (equalEqualToken, static (a, b) => new BinaryNode(BinaryOperator.Equal, a, b)),
+            (notEqualToken, static (a, b) => new BinaryNode(BinaryOperator.NotEqual, a, b)),
+            (angleNotEqualToken, static (a, b) => new BinaryNode(BinaryOperator.NotEqual, a, b)),
+            (equalToken, static (a, b) => new BinaryNode(BinaryOperator.Equal, a, b))
         );
 
         var logicalNot = equality.Unary(
-            (notToken, static x => Expression.Not(ConvertExpressionToBoolean(x)))
+            (notToken, static x => new UnaryNode(UnaryOperator.Not, x))
         );
 
         var logicalAnd = logicalNot.LeftAssociative(
-            (andToken, static (a, b) => Expression.AndAlso(
-                ConvertExpressionToBoolean(a),
-                ConvertExpressionToBoolean(b)))
+            (andToken, static (a, b) => new BinaryNode(BinaryOperator.And, a, b))
         );
 
         var logicalOr = logicalAnd.LeftAssociative(
-            (orToken, static (a, b) => Expression.OrElse(
-                ConvertExpressionToBoolean(a),
-                ConvertExpressionToBoolean(b)))
+            (orToken, static (a, b) => new BinaryNode(BinaryOperator.Or, a, b))
         );
 
         expr.Parser = logicalOr;
 
         return expr.Eof().Compile();
+    }
+
+    private static Expression BindSyntax(AstNode node)
+    {
+        return node switch
+        {
+            NumberLiteralNode literal => literal.Value switch
+            {
+                long longValue => Expression.Constant(longValue),
+                double doubleValue => Expression.Constant(doubleValue),
+                _ => throw new NotSupportedException($"지원하지 않는 숫자 literal 타입입니다: {literal.Value.GetType()}")
+            },
+            StringLiteralNode literal => Expression.Constant(MaterializeString(literal.Value), typeof(string)),
+            BooleanLiteralNode literal => Expression.Constant(literal.Value),
+            IdentifierNode identifier => CreatePropertyExpression(identifier.Name),
+            FunctionCallNode functionCall => CreateFunctionCallExpression(
+                functionCall.Name,
+                functionCall.Arguments.Select(BindSyntax).ToArray()),
+            UnaryNode unary => BindUnaryExpression(unary),
+            BinaryNode binary => BindBinaryExpression(binary),
+            _ => throw new NotSupportedException($"지원하지 않는 AST 노드입니다: {node.GetType()}")
+        };
+    }
+
+    private static Expression BindUnaryExpression(UnaryNode node)
+    {
+        var operand = BindSyntax(node.Operand);
+
+        return node.Operator switch
+        {
+            UnaryOperator.UnaryPlus => BuildUnaryPlusExpression(operand),
+            UnaryOperator.Negate => BuildUnaryNegateExpression(operand),
+            UnaryOperator.Not => Expression.Not(ConvertExpressionToBoolean(operand)),
+            _ => throw new NotSupportedException($"지원하지 않는 단항 연산자입니다: {node.Operator}")
+        };
+    }
+
+    private static Expression BindBinaryExpression(BinaryNode node)
+    {
+        var left = BindSyntax(node.Left);
+        var right = BindSyntax(node.Right);
+
+        return node.Operator switch
+        {
+            BinaryOperator.Add => BuildAddExpression(left, right),
+            BinaryOperator.Subtract => BuildNumericBinaryExpression(left, right, Expression.Subtract),
+            BinaryOperator.Multiply => BuildNumericBinaryExpression(left, right, Expression.Multiply),
+            BinaryOperator.Divide => BuildDivideExpression(left, right),
+            BinaryOperator.Modulo => BuildNumericBinaryExpression(left, right, Expression.Modulo),
+            BinaryOperator.Power => BuildPowerExpression(left, right),
+            BinaryOperator.Equal => BuildEqualityExpression(left, right),
+            BinaryOperator.NotEqual => BuildNotEqualExpression(left, right),
+            BinaryOperator.GreaterThan => BuildRelationalExpression(left, right, Expression.GreaterThan),
+            BinaryOperator.GreaterThanOrEqual => BuildRelationalExpression(left, right, Expression.GreaterThanOrEqual),
+            BinaryOperator.LessThan => BuildRelationalExpression(left, right, Expression.LessThan),
+            BinaryOperator.LessThanOrEqual => BuildRelationalExpression(left, right, Expression.LessThanOrEqual),
+            BinaryOperator.And => Expression.AndAlso(
+                ConvertExpressionToBoolean(left),
+                ConvertExpressionToBoolean(right)),
+            BinaryOperator.Or => Expression.OrElse(
+                ConvertExpressionToBoolean(left),
+                ConvertExpressionToBoolean(right)),
+            _ => throw new NotSupportedException($"지원하지 않는 이항 연산자입니다: {node.Operator}")
+        };
+    }
+
+    private static Expression ConvertReturnExpression(Expression expression, Type targetType)
+    {
+        if (targetType == typeof(double))
+        {
+            if (expression.Type == typeof(double))
+            {
+                return expression;
+            }
+
+            if (expression.Type == typeof(long))
+            {
+                return Expression.Convert(expression, typeof(double));
+            }
+
+            throw new NotSupportedException($"double 반환 식이 아닙니다. 현재 타입: {expression.Type}");
+        }
+
+        if (targetType == typeof(long))
+        {
+            if (expression.Type == typeof(long))
+            {
+                return expression;
+            }
+
+            if (expression.Type == typeof(double))
+            {
+                return Expression.Convert(expression, typeof(long));
+            }
+
+            throw new NotSupportedException($"long 반환 식이 아닙니다. 현재 타입: {expression.Type}");
+        }
+
+        if (targetType == typeof(bool))
+        {
+            if (expression.Type != typeof(bool))
+            {
+                throw new NotSupportedException($"bool 반환 식이 아닙니다. 현재 타입: {expression.Type}");
+            }
+
+            return expression;
+        }
+
+        if (targetType == typeof(string))
+        {
+            if (expression.Type != typeof(string))
+            {
+                throw new NotSupportedException($"string 반환 식이 아닙니다. 현재 타입: {expression.Type}");
+            }
+
+            return expression;
+        }
+
+        throw new NotSupportedException($"지원하지 않는 반환 타입입니다: {targetType}");
     }
 
     private static MethodCallExpression CreateFunctionCallExpression(string functionName, IReadOnlyList<Expression> arguments)
@@ -276,31 +401,29 @@ public class ExpressionCompiler
             return true;
         }
 
+        if (targetType.IsAssignableFrom(argument.Type) || targetType == typeof(object))
+        {
+            convertedArgument = Expression.Convert(argument, targetType);
+            conversionScore = 2;
+            return true;
+        }
+
         convertedArgument = null!;
         conversionScore = 0;
         return false;
     }
 
-    private static MemberExpression CreatePropertyExpression(
-        Parlot.TextSpan textSpan,
-        Type contextType,
-        ParameterExpression contextParameter)
+    private static MemberExpression CreatePropertyExpression(string name)
     {
-        var name = textSpan.ToString();
-        var property = contextType.GetProperty(
+        var property = typeof(ExpressionContext).GetProperty(
                 name,
                 BindingFlags.Instance | BindingFlags.Public | BindingFlags.IgnoreCase)
-            ?? throw new KeyNotFoundException($"Property '{name}' is not defined on '{contextType.Name}'.");
+            ?? throw new KeyNotFoundException($"Property '{name}' is not defined on '{nameof(ExpressionContext)}'.");
 
-        if (property.PropertyType != typeof(double) && property.PropertyType != typeof(long))
-        {
-            throw new NotSupportedException($"현재는 long/double property만 지원합니다: {name}");
-        }
-
-        return Expression.Property(contextParameter, property);
+        return Expression.Property(_contextParameter, property);
     }
 
-    private static ConstantExpression CreateNumberLiteralExpression(Parlot.TextSpan textSpan)
+    private static AstNode CreateNumberLiteralNode(Parlot.TextSpan textSpan)
     {
         var span = textSpan.Span;
 
@@ -320,7 +443,7 @@ public class ExpressionCompiler
                 throw new FormatException($"잘못된 실수입니다: {new string(span)}");
             }
 
-            return Expression.Constant(doubleValue);
+            return new NumberLiteralNode(doubleValue);
         }
 
         if (!long.TryParse(
@@ -332,7 +455,70 @@ public class ExpressionCompiler
             throw new FormatException($"잘못된 정수입니다: {new string(span)}");
         }
 
-        return Expression.Constant(longValue);
+        return new NumberLiteralNode(longValue);
+    }
+
+    private static string MaterializeString(Parlot.TextSpan textSpan)
+    {
+        if (textSpan.Buffer is null || textSpan.Length == 0)
+        {
+            return string.Empty;
+        }
+
+        if (textSpan.Offset == 0 && textSpan.Length == textSpan.Buffer.Length)
+        {
+            return textSpan.Buffer;
+        }
+
+        return textSpan.Buffer.Substring(textSpan.Offset, textSpan.Length);
+    }
+
+    private static Expression BuildUnaryPlusExpression(Expression operand)
+    {
+        if (operand.Type == typeof(string))
+        {
+            throw new NotSupportedException("string에는 단항 + 를 사용할 수 없습니다.");
+        }
+
+        return operand;
+    }
+
+    private static Expression BuildUnaryNegateExpression(Expression operand)
+    {
+        if (!IsNumericType(operand.Type))
+        {
+            throw new NotSupportedException($"단항 - 는 숫자형에만 사용할 수 있습니다. 현재 타입: {operand.Type}");
+        }
+
+        return Expression.Negate(operand);
+    }
+
+    private static Expression BuildAddExpression(Expression left, Expression right)
+    {
+        if (left.Type == typeof(string) || right.Type == typeof(string))
+        {
+            return BuildStringConcatExpression(left, right);
+        }
+
+        return BuildNumericBinaryExpression(left, right, Expression.Add);
+    }
+
+    private static Expression BuildStringConcatExpression(Expression left, Expression right)
+    {
+        return Expression.Call(
+            _stringConcatMethod,
+            ConvertExpressionToObject(left),
+            ConvertExpressionToObject(right));
+    }
+
+    private static Expression ConvertExpressionToObject(Expression expression)
+    {
+        if (expression.Type == typeof(object))
+        {
+            return expression;
+        }
+
+        return Expression.Convert(expression, typeof(object));
     }
 
     private static BinaryExpression BuildNumericBinaryExpression(
@@ -340,31 +526,8 @@ public class ExpressionCompiler
         Expression right,
         Func<Expression, Expression, BinaryExpression> operationFactory)
     {
-        var leftType = left.Type;
-        var rightType = right.Type;
-
-        if (leftType == typeof(long) && rightType == typeof(long))
-        {
-            return operationFactory(left, right);
-        }
-
-        if (leftType == typeof(double) && rightType == typeof(double))
-        {
-            return operationFactory(left, right);
-        }
-
-        if (leftType == typeof(long) && rightType == typeof(double))
-        {
-            return operationFactory(Expression.Convert(left, typeof(double)), right);
-        }
-
-        if (leftType == typeof(double) && rightType == typeof(long))
-        {
-            return operationFactory(left, Expression.Convert(right, typeof(double)));
-        }
-
-        throw new NotSupportedException(
-            $"지원하지 않는 숫자 이항 연산입니다. 왼쪽 타입: {leftType}, 오른쪽 타입: {rightType}");
+        var operands = NormalizeNumericOperands(left, right);
+        return operationFactory(operands.Left, operands.Right);
     }
 
     private static BinaryExpression BuildDivideExpression(Expression left, Expression right)
@@ -389,6 +552,13 @@ public class ExpressionCompiler
         }
 
         return Expression.Divide(leftOperand, rightOperand);
+    }
+
+    private static BinaryExpression BuildPowerExpression(Expression left, Expression right)
+    {
+        return Expression.Power(
+            ConvertNumericExpressionToDouble(left),
+            ConvertNumericExpressionToDouble(right));
     }
 
     private static Expression ConvertNumericExpressionToDouble(Expression expression)
@@ -444,7 +614,7 @@ public class ExpressionCompiler
         }
 
         throw new NotSupportedException(
-            $"지원하지 않는 숫자 비교입니다. 왼쪽 타입: {left.Type}, 오른쪽 타입: {right.Type}");
+            $"지원하지 않는 숫자 연산입니다. 왼쪽 타입: {left.Type}, 오른쪽 타입: {right.Type}");
     }
 
     private static BinaryExpression BuildEqualityExpression(Expression left, Expression right)
@@ -452,6 +622,17 @@ public class ExpressionCompiler
         if (left.Type == typeof(bool) && right.Type == typeof(bool))
         {
             return Expression.Equal(left, right);
+        }
+
+        if (left.Type == typeof(string) && right.Type == typeof(string))
+        {
+            return Expression.Equal(left, right);
+        }
+
+        if (left.Type == typeof(string) || right.Type == typeof(string))
+        {
+            throw new NotSupportedException(
+                $"문자열 같음 비교는 좌우가 모두 string일 때만 지원합니다. 왼쪽 타입: {left.Type}, 오른쪽 타입: {right.Type}");
         }
 
         if (IsNumericType(left.Type) && IsNumericType(right.Type))
@@ -469,6 +650,17 @@ public class ExpressionCompiler
         if (left.Type == typeof(bool) && right.Type == typeof(bool))
         {
             return Expression.NotEqual(left, right);
+        }
+
+        if (left.Type == typeof(string) && right.Type == typeof(string))
+        {
+            return Expression.NotEqual(left, right);
+        }
+
+        if (left.Type == typeof(string) || right.Type == typeof(string))
+        {
+            throw new NotSupportedException(
+                $"문자열 다름 비교는 좌우가 모두 string일 때만 지원합니다. 왼쪽 타입: {left.Type}, 오른쪽 타입: {right.Type}");
         }
 
         if (IsNumericType(left.Type) && IsNumericType(right.Type))
@@ -509,5 +701,46 @@ public class ExpressionCompiler
     private static bool IsNumberLiteralChar(char c)
     {
         return char.IsDigit(c) || c == '.';
+    }
+
+    private abstract record AstNode;
+
+    private sealed record NumberLiteralNode(object Value) : AstNode;
+
+    private sealed record StringLiteralNode(Parlot.TextSpan Value) : AstNode;
+
+    private sealed record BooleanLiteralNode(bool Value) : AstNode;
+
+    private sealed record IdentifierNode(string Name) : AstNode;
+
+    private sealed record FunctionCallNode(string Name, IReadOnlyList<AstNode> Arguments) : AstNode;
+
+    private sealed record UnaryNode(UnaryOperator Operator, AstNode Operand) : AstNode;
+
+    private sealed record BinaryNode(BinaryOperator Operator, AstNode Left, AstNode Right) : AstNode;
+
+    private enum UnaryOperator
+    {
+        UnaryPlus,
+        Negate,
+        Not
+    }
+
+    private enum BinaryOperator
+    {
+        Add,
+        Subtract,
+        Multiply,
+        Divide,
+        Modulo,
+        Power,
+        Equal,
+        NotEqual,
+        GreaterThan,
+        GreaterThanOrEqual,
+        LessThan,
+        LessThanOrEqual,
+        And,
+        Or
     }
 }
