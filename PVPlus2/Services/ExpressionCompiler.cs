@@ -202,7 +202,7 @@ public class ExpressionCompiler
             IdentifierNode identifier => CreatePropertyExpression(identifier.Name),
             FunctionCallNode functionCall => CreateFunctionCallExpression(
                 functionCall.Name,
-                functionCall.Arguments.Select(BindSyntax).ToArray()),
+                functionCall.Arguments),
             UnaryNode unary => BindUnaryExpression(unary),
             BinaryNode binary => BindBinaryExpression(binary),
             _ => throw new NotSupportedException($"지원하지 않는 AST 노드입니다: {node.GetType()}")
@@ -306,7 +306,122 @@ public class ExpressionCompiler
         throw new NotSupportedException($"지원하지 않는 반환 타입입니다: {targetType}");
     }
 
-    private static MethodCallExpression CreateFunctionCallExpression(string functionName, IReadOnlyList<Expression> arguments)
+    // ─────────────────────────────────────────────────────────────
+    // 함수 바인딩 진입점
+    // ─────────────────────────────────────────────────────────────
+
+    private static Expression CreateFunctionCallExpression(string functionName, IReadOnlyList<AstNode> rawArguments)
+    {
+        // 1. 특수 내장 함수 먼저 시도 (short-circuit 필요)
+        if (TryBindSpecialFunction(functionName, rawArguments, out var specialExpression))
+        {
+            return specialExpression!;
+        }
+
+        // 2. 일반 reflection 함수 경로
+        var boundArguments = rawArguments.Select(BindSyntax).ToArray();
+        return CreateReflectionFunctionCallExpression(functionName, boundArguments);
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // 특수 내장 함수 바인더 계층
+    // ─────────────────────────────────────────────────────────────
+
+    private static bool TryBindSpecialFunction(
+        string functionName,
+        IReadOnlyList<AstNode> rawArguments,
+        out Expression? expression)
+    {
+        if (string.Equals(functionName, "if", StringComparison.OrdinalIgnoreCase))
+        {
+            expression = CreateIfExpression(rawArguments);
+            return true;
+        }
+
+        if (string.Equals(functionName, "ifs", StringComparison.OrdinalIgnoreCase))
+        {
+            expression = CreateIfsExpression(rawArguments);
+            return true;
+        }
+
+        expression = null;
+        return false;
+    }
+
+    private static Expression CreateIfExpression(IReadOnlyList<AstNode> arguments)
+    {
+        if (arguments.Count != 3)
+        {
+            throw new FormatException(
+                $"if(condition, true_value, false_value) 형식이어야 합니다. 현재 인수 개수: {arguments.Count}");
+        }
+
+        var condition = ConvertExpressionToBoolean(BindSyntax(arguments[0]));
+        var trueExpr = BindSyntax(arguments[1]);
+        var falseExpr = BindSyntax(arguments[2]);
+
+        (trueExpr, falseExpr) = UnifyBranchTypes(trueExpr, falseExpr);
+
+        return Expression.Condition(condition, trueExpr, falseExpr);
+    }
+
+    private static Expression CreateIfsExpression(IReadOnlyList<AstNode> arguments)
+    {
+        // (condition1, val1, condition2, val2, ..., default)
+        // 최소 3개, 홀수
+        if (arguments.Count < 3 || arguments.Count % 2 == 0)
+        {
+            throw new FormatException(
+                $"ifs(condition1, val1, ..., conditionN, valN, default) 형식이어야 합니다. " +
+                $"인수 개수는 홀수 3 이상이어야 합니다. 현재 인수 개수: {arguments.Count}");
+        }
+
+        // default_val부터 시작해 뒤에서부터 중첩 Condition으로 조립
+        var result = BindSyntax(arguments[^1]);
+
+        for (var i = arguments.Count - 2; i >= 1; i -= 2)
+        {
+            var trueExpr = BindSyntax(arguments[i]);
+            var condition = ConvertExpressionToBoolean(BindSyntax(arguments[i - 1]));
+
+            (trueExpr, result) = UnifyBranchTypes(trueExpr, result);
+
+            result = Expression.Condition(condition, trueExpr, result);
+        }
+
+        return result;
+    }
+
+    private static (Expression TrueExpr, Expression FalseExpr) UnifyBranchTypes(
+        Expression trueExpr,
+        Expression falseExpr)
+    {
+        if (trueExpr.Type == falseExpr.Type)
+        {
+            return (trueExpr, falseExpr);
+        }
+
+        // long + double 혼합 → 둘 다 double로 승격
+        if (IsNumericType(trueExpr.Type) && IsNumericType(falseExpr.Type))
+        {
+            return (
+                ConvertNumericExpressionToDouble(trueExpr),
+                ConvertNumericExpressionToDouble(falseExpr)
+            );
+        }
+
+        throw new NotSupportedException(
+            $"if/ifs 브랜치 타입이 일치하지 않습니다. " +
+            $"true 브랜치: {trueExpr.Type}, false 브랜치: {falseExpr.Type}");
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // 일반 reflection 함수 바인더 (기존 로직 그대로)
+    // ─────────────────────────────────────────────────────────────
+
+    private static MethodCallExpression CreateReflectionFunctionCallExpression(
+        string functionName,
+        IReadOnlyList<Expression> arguments)
     {
         if (!_registeredFunctions.TryGetValue(functionName, out var candidates))
         {
