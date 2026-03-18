@@ -24,4 +24,8 @@
 		<PackageReference Include="Sylvan.Data.Excel" Version="0.5.2" />
 	</ItemGroup>
 
+	<ItemGroup>
+	  <Folder Include="LLM_MD_FILES\" />
+	</ItemGroup>
+
 </Project>

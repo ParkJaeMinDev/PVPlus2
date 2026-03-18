@@ -130,8 +130,7 @@ internal static class ExpressionTestCases
             "10 / 4",
             "2 ^ 3 ^ 2",
             "-2 ^ 2",
-            "0 / 0",
-            "test(x) + 1"
+            "0 / 0"
         };
     }
 
@@ -139,9 +138,7 @@ internal static class ExpressionTestCases
     {
         return new HashSet<string>(StringComparer.Ordinal)
         {
-            "+10",
-            "test(10)",
-            "test(10) + 5"
+            "+10"
         };
     }
 
@@ -155,11 +152,7 @@ internal static class ExpressionTestCases
 
     internal static HashSet<string> CreateCommonStringExclusions()
     {
-        return new HashSet<string>(StringComparer.Ordinal)
-        {
-            "\"test=\" + test(10)",
-            "\"testd=\" + test(10.5)"
-        };
+        return new HashSet<string>(StringComparer.Ordinal);
     }
 
     internal static Dictionary<string, Func<double, double, double>> CreateNativeDoubleExpressions()
@@ -184,8 +177,7 @@ internal static class ExpressionTestCases
             ["x * 2 + y / 2"] = static (x, y) => x * 2 + y / 2,
             ["(x + 10) / (y + 1)"] = static (x, y) => (x + 10) / (y + 1),
             ["x ^ 2"] = static (x, y) => Math.Pow(x, 2),
-            ["(x + y) % 7"] = static (x, y) => (x + y) % 7,
-            ["test(x) + 1"] = static (x, y) => x + 1
+            ["(x + y) % 7"] = static (x, y) => (x + y) % 7
         };
     }
 
@@ -203,8 +195,6 @@ internal static class ExpressionTestCases
             ["7 % 5 + 2"] = static (x, y) => 7 % 5 + 2,
             ["3 * (4 + 5)"] = static (x, y) => 3 * (4 + 5),
             ["999 - 1"] = static (x, y) => 999 - 1,
-            ["test(10)"] = static (x, y) => 10,
-            ["test(10) + 5"] = static (x, y) => 10 + 5,
             ["100 % 10"] = static (x, y) => 100 % 10,
             ["50 - (3 * 7)"] = static (x, y) => 50 - (3 * 7),
             ["2 * 2 * 2 * 2"] = static (x, y) => 2 * 2 * 2 * 2,
@@ -262,8 +252,6 @@ internal static class ExpressionTestCases
             ["\"mod=\" + (10 % 3)"] = static (x, y) => "mod=" + (10 % 3),
             ["\"cmp=\" + (1 < 2)"] = static (x, y) => "cmp=" + (1 < 2),
             ["\"nested=\" + ((1 + 2) * 3)"] = static (x, y) => "nested=" + ((1 + 2) * 3),
-            ["\"test=\" + test(10)"] = static (x, y) => "test=" + 10,
-            ["\"testd=\" + test(10.5)"] = static (x, y) => "testd=" + 10.5,
             ["\"eq=\" + (\"a\" == \"a\")"] = static (x, y) => "eq=" + ("a" == "a"),
             ["\"xy=\" + x + y"] = static (x, y) => "xy=" + x + y,
             ["\"literal with space\""] = static (x, y) => "literal with space"
@@ -287,7 +275,7 @@ internal static class ExpressionTestCases
             "NOT 1",
             "1 < 2 < 3",
             "unknown(1)",
-            "test(True)",
+            "Abs(True)",
             "x AND y",
             "1 +",
             "(1 + 2",
@@ -314,7 +302,7 @@ internal static class ExpressionTestCases
             "NOT 1",
             "1 < 2 < 3",
             "unknown(1)",
-            "test(True)",
+            "Abs(True)",
             "1 = 1",
             "\"a\" = \"a\"",
             "True AND False",
@@ -339,7 +327,7 @@ internal static class ExpressionTestCases
             "1 + 2",
             "x + y",
             "unknown(1)",
-            "test(True)",
+            "Abs(True)",
             "1e10",
             "1.2.3",
             "()",
@@ -368,7 +356,7 @@ internal static class ExpressionTestCases
             "\"a\" > \"b\"",
             "\"a\" AND \"b\"",
             "unknown(1)",
-            "test(True)",
+            "Abs(True)",
             "1e10",
             "1.2.3",
             "()",

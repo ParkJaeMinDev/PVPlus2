@@ -221,11 +221,20 @@ Current state:
 - the class is `static`
 - methods are discovered via reflection at compiler startup
 - function lookup is case-insensitive
-- current test methods are:
-  - `test(long a)`
-  - `test(double a)`
 
-Function-call parsing already exists, but the benchmark harness is not using custom-function expressions yet.
+Currently registered functions:
+
+- `Min(params double[])`, `Max(params double[])` — variable-argument, returns `double`
+- `Abs(long)`, `Abs(double)`
+- `Floor(long)`, `Floor(double)`
+- `Ceiling(long)`, `Ceiling(double)`
+- `Round(long)`, `Round(double)` — uses `MidpointRounding.AwayFromZero`
+- `Round(long, long)`, `Round(double, long)` — with digits argument, also `AwayFromZero`
+- `Pow(long, long)`, `Pow(double, double)`, `Pow(long, double)`, `Pow(double, long)`
+- `Sqrt(long)`, `Sqrt(double)`
+- `Truncate(long)`, `Truncate(double)`
+- `Sign(long)`, `Sign(double)` — returns `long`
+- `test(long)`, `test(double)` — testing only
 
 ## ExpressionCompiler
 
@@ -420,21 +429,127 @@ Examples:
 
 The symbolic operators remain symbolic and are not affected by case.
 
-### Function-call support
+### Special built-in functions
+
+The compiler now has a dedicated special-function binder layer separate from the reflection-based function path.
+
+#### `if`
+
+Syntax:
+
+- `if(condition, true_value, false_value)`
+
+Rules:
+
+- exactly 3 arguments required
+- `condition` must be `bool`
+- `true_value` and `false_value` must be the same type, or both numeric (promoted to `double`)
+- compiled to `Expression.Condition(...)` — only the selected branch is evaluated at runtime
+- mixed-type branches such as `if(True, 1, "x")` are rejected at compile time
+
+Examples:
+
+- `if(x > 5, x * 2, 0.0)`
+- `if(True, "A", "B")`
+- `if(x > y, x + y, x - y)`
+
+#### `ifs`
+
+Syntax:
+
+- `ifs(condition1, value1, condition2, value2, ..., conditionN, valueN, default_value)`
+
+Rules:
+
+- argument count must be odd and at least 3
+- each `conditionN` must be `bool`
+- all `valueN` and `default_value` must be the same type, or all numeric (promoted to `double`)
+- compiled as nested `Expression.Condition(...)` from right to left — only the matching branch and its value are evaluated at runtime
+- branches after the first match are never evaluated
+
+Examples:
+
+- `ifs(x > 10, "high", x > 5, "mid", "low")`
+- `ifs(x > y + 100, x + y, x > y, x - y, y - x)`
+
+#### `cast`
+
+Syntax:
+
+- `cast(value, type)`
+
+Rules:
+
+- exactly 2 arguments required
+- second argument must be a type name identifier
+- supported type aliases:
+  - `int`, `int32` → `long`
+  - `long`, `int64` → `long`
+  - `double`, `float64` → `double`
+  - `bool`, `boolean` → `bool`
+  - `string` → `string`
+- `float`, `single` are explicitly unsupported (compile error)
+- numeric-to-numeric conversion uses `Expression.Convert`
+- same-type cast is identity
+- non-numeric cross-type cast is rejected at compile time
+- `double` → `long` boundary behavior (NaN, Infinity) is delegated to CLR
+
+Examples:
+
+- `cast(1.9, int)` → `1L`
+- `cast(x, double)` → same as `x` when `x` is already `double`
+
+#### Function binder architecture
+
+`CreateFunctionCallExpression` is now the single function binding entry point.
+
+It:
+
+1. calls `TryBindSpecialFunction(name, rawArguments, out expression)` first
+2. if that returns `true`, returns the special expression directly (arguments were never pre-bound)
+3. otherwise binds all arguments via `BindSyntax` and passes them to `CreateReflectionFunctionCallExpression`
+
+This ensures special functions receive unbound `AstNode` arguments, which is required for short-circuit semantics.
+
+### General function-call support
 
 Current syntax:
 
 - `name(arg1, arg2, ...)`
+- minimum 1 argument required — `fn()` is rejected at parse time with `FormatException`
 
 Current binding rules:
 
 - function names are resolved from `ExpressionFunctions`
 - public static methods only
-- overload resolution is based on:
-  - exact type match first
-  - then `long -> double`
-  - then `double -> long`
-- if more than one overload has the same score, the call is treated as ambiguous
+- overload resolution score:
+  - exact type match: 0
+  - `long` → `double`: 1
+  - `double` → `long`: 1
+  - `IsAssignableFrom` / `object`: 2
+  - `params` candidate penalty: +1
+- all candidates are evaluated before ambiguous judgement — the loop does not throw early on a tie
+- if the best score is still tied after all candidates are checked, the call is treated as ambiguous
+
+### `params T[]` support
+
+Methods with a `params T[]` last parameter are supported.
+
+Rules:
+
+- detected via `ParamArrayAttribute` on the last parameter
+- `arguments.Count >= fixedParameterCount` is required
+- fixed parameters are matched individually as normal
+- trailing arguments are each converted to the element type and bundled into `Expression.NewArrayInit(...)`
+- `params` candidates carry a `+1` score penalty so fixed-arity overloads always win when scores are equal
+
+Element type guidelines for `ExpressionFunctions` authors:
+
+| Element type | Intended use |
+|---|---|
+| `double[]` | numeric calculation functions (default choice) |
+| `long[]` | integer-only functions where `long` return is required |
+| `object[]` | heterogeneous-argument functions only — avoid for numeric functions |
 
 ### Important current runtime behavior
 
@@ -462,14 +577,13 @@ Still not implemented:
 - scientific-notation numbers
 - numeric group separators
 - percent literals
-- ternary syntax
-- dedicated `If(...)` support
 - string relational operators
 - general string function support beyond literal/concat/equality
-- general function libraries beyond the current test methods
+- `ExpressionContext`-aware function injection (planned: first-parameter auto-injection of `_contextParameter`)
 - domain-aware business variable binding beyond `ExpressionContext`
 - array indexing in the general expression language
 - legacy Flee-compatible full feature parity
+- `fn()` zero-argument call syntax (parse-time `FormatException` by current policy)
 
 ## TestView and Test Harness
 
@@ -609,10 +723,13 @@ Current limitations include:
 
 The natural next steps are:
 
-1. implement the remaining Excel sheet loaders
-2. decide the final shape of business variable binding beyond `ExpressionContext`
-3. expand the registered function set in `ExpressionFunctions`
-4. decide how far string support should go beyond the current concat/equality subset
-5. add business-focused expression tests instead of only edge-case/runtime tests
-6. connect loaded rule data to a runtime evaluation layer
-7. connect the future calculation pipeline
+1. implement `ExpressionContext`-aware function injection (`ProductNameContains`, `RiderNameContains` etc.) — spec exists at `LLM_MD_FILES/ContextInjectionForFunctions_claude.md`
+2. add `ProductName`, `RiderName` properties to `ExpressionContext`
+3. implement the remaining Excel sheet loaders
+4. decide the final shape of business variable binding beyond `ExpressionContext`
+5. decide how far string support should go beyond the current concat/equality subset
+6. add business-focused expression tests instead of only edge-case/runtime tests
+7. connect loaded rule data to a runtime evaluation layer
+8. connect the future calculation pipeline
+
+Note: `ExpressionContext` is planned to be renamed to `CommutationTable` in a future refactoring pass.

@@ -306,26 +306,16 @@ public class ExpressionCompiler
         throw new NotSupportedException($"지원하지 않는 반환 타입입니다: {targetType}");
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // 함수 바인딩 진입점
-    // ─────────────────────────────────────────────────────────────
-
     private static Expression CreateFunctionCallExpression(string functionName, IReadOnlyList<AstNode> rawArguments)
     {
-        // 1. 특수 내장 함수 먼저 시도 (short-circuit 필요)
         if (TryBindSpecialFunction(functionName, rawArguments, out var specialExpression))
         {
             return specialExpression!;
         }
 
-        // 2. 일반 reflection 함수 경로
         var boundArguments = rawArguments.Select(BindSyntax).ToArray();
         return CreateReflectionFunctionCallExpression(functionName, boundArguments);
     }
-
-    // ─────────────────────────────────────────────────────────────
-    // 특수 내장 함수 바인더 계층
-    // ─────────────────────────────────────────────────────────────
 
     private static bool TryBindSpecialFunction(
         string functionName,
@@ -341,6 +331,12 @@ public class ExpressionCompiler
         if (string.Equals(functionName, "ifs", StringComparison.OrdinalIgnoreCase))
         {
             expression = CreateIfsExpression(rawArguments);
+            return true;
+        }
+
+        if (string.Equals(functionName, "cast", StringComparison.OrdinalIgnoreCase))
+        {
+            expression = CreateCastExpression(rawArguments);
             return true;
         }
 
@@ -367,8 +363,6 @@ public class ExpressionCompiler
 
     private static Expression CreateIfsExpression(IReadOnlyList<AstNode> arguments)
     {
-        // (condition1, val1, condition2, val2, ..., default)
-        // 최소 3개, 홀수
         if (arguments.Count < 3 || arguments.Count % 2 == 0)
         {
             throw new FormatException(
@@ -376,7 +370,6 @@ public class ExpressionCompiler
                 $"인수 개수는 홀수 3 이상이어야 합니다. 현재 인수 개수: {arguments.Count}");
         }
 
-        // default_val부터 시작해 뒤에서부터 중첩 Condition으로 조립
         var result = BindSyntax(arguments[^1]);
 
         for (var i = arguments.Count - 2; i >= 1; i -= 2)
@@ -392,6 +385,54 @@ public class ExpressionCompiler
         return result;
     }
 
+    private static Expression CreateCastExpression(IReadOnlyList<AstNode> arguments)
+    {
+        if (arguments.Count != 2)
+        {
+            throw new FormatException(
+                $"cast(value, type) 형식이어야 합니다. 현재 인수 개수: {arguments.Count}");
+        }
+
+        var valueExpression = BindSyntax(arguments[0]);
+        var targetType = ResolveCastTargetType(arguments[1]);
+
+        return ConvertCastExpression(valueExpression, targetType);
+    }
+
+    private static Type ResolveCastTargetType(AstNode rawTypeArgument)
+    {
+        if (rawTypeArgument is not IdentifierNode identifier)
+        {
+            throw new FormatException("cast의 두 번째 인수는 타입명 identifier여야 합니다.");
+        }
+
+        return identifier.Name.ToLowerInvariant() switch
+        {
+            "int" or "int32" => typeof(long),
+            "long" or "int64" => typeof(long),
+            "double" or "float64" => typeof(double),
+            "bool" or "boolean" => typeof(bool),
+            "string" => typeof(string),
+            _ => throw new NotSupportedException($"cast에서 지원하지 않는 타입입니다: {identifier.Name}")
+        };
+    }
+
+    private static Expression ConvertCastExpression(Expression valueExpression, Type targetType)
+    {
+        if (valueExpression.Type == targetType)
+        {
+            return valueExpression;
+        }
+
+        if (IsNumericType(valueExpression.Type) && IsNumericType(targetType))
+        {
+            return Expression.Convert(valueExpression, targetType);
+        }
+
+        throw new NotSupportedException(
+            $"지원하지 않는 cast 변환입니다. source: {valueExpression.Type}, target: {targetType}");
+    }
+
     private static (Expression TrueExpr, Expression FalseExpr) UnifyBranchTypes(
         Expression trueExpr,
         Expression falseExpr)
@@ -401,7 +442,6 @@ public class ExpressionCompiler
             return (trueExpr, falseExpr);
         }
 
-        // long + double 혼합 → 둘 다 double로 승격
         if (IsNumericType(trueExpr.Type) && IsNumericType(falseExpr.Type))
         {
             return (
@@ -415,10 +455,6 @@ public class ExpressionCompiler
             $"true 브랜치: {trueExpr.Type}, false 브랜치: {falseExpr.Type}");
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // 일반 reflection 함수 바인더 (기존 로직 그대로)
-    // ─────────────────────────────────────────────────────────────
-
     private static MethodCallExpression CreateReflectionFunctionCallExpression(
         string functionName,
         IReadOnlyList<Expression> arguments)
@@ -431,39 +467,55 @@ public class ExpressionCompiler
         MethodInfo? bestMethod = null;
         Expression[]? bestArguments = null;
         var bestScore = int.MaxValue;
+        var bestIsAmbiguous = false;
 
         foreach (var candidate in candidates)
         {
             var parameters = candidate.GetParameters();
+            var isParams = parameters.Length > 0
+                && parameters[^1].GetCustomAttribute<ParamArrayAttribute>() != null;
 
-            if (parameters.Length != arguments.Count)
+            int score;
+            Expression[] convertedArguments;
+
+            if (isParams)
             {
-                continue;
-            }
-
-            var convertedArguments = new Expression[arguments.Count];
-            var score = 0;
-            var success = true;
-
-            for (var i = 0; i < arguments.Count; i++)
-            {
-                if (!TryConvertFunctionArgument(
-                        arguments[i],
-                        parameters[i].ParameterType,
-                        out var convertedArgument,
-                        out var conversionScore))
+                if (!TryConvertParamArrayFunctionArguments(arguments, parameters, out convertedArguments, out score))
                 {
-                    success = false;
-                    break;
+                    continue;
+                }
+            }
+            else
+            {
+                if (parameters.Length != arguments.Count)
+                {
+                    continue;
                 }
 
-                convertedArguments[i] = convertedArgument;
-                score += conversionScore;
-            }
+                convertedArguments = new Expression[arguments.Count];
+                score = 0;
+                var success = true;
 
-            if (!success)
-            {
-                continue;
+                for (var i = 0; i < arguments.Count; i++)
+                {
+                    if (!TryConvertFunctionArgument(
+                            arguments[i],
+                            parameters[i].ParameterType,
+                            out var convertedArgument,
+                            out var conversionScore))
+                    {
+                        success = false;
+                        break;
+                    }
+
+                    convertedArguments[i] = convertedArgument;
+                    score += conversionScore;
+                }
+
+                if (!success)
+                {
+                    continue;
+                }
             }
 
             if (score < bestScore)
@@ -471,12 +523,13 @@ public class ExpressionCompiler
                 bestMethod = candidate;
                 bestArguments = convertedArguments;
                 bestScore = score;
+                bestIsAmbiguous = false;
                 continue;
             }
 
             if (score == bestScore)
             {
-                throw new InvalidOperationException($"Function '{functionName}' call is ambiguous.");
+                bestIsAmbiguous = true;
             }
         }
 
@@ -486,7 +539,73 @@ public class ExpressionCompiler
                 $"No matching overload found for function '{functionName}' with {arguments.Count} argument(s).");
         }
 
+        if (bestIsAmbiguous)
+        {
+            throw new InvalidOperationException($"Function '{functionName}' call is ambiguous.");
+        }
+
         return Expression.Call(bestMethod, bestArguments);
+    }
+
+    private static bool TryConvertParamArrayFunctionArguments(
+        IReadOnlyList<Expression> arguments,
+        ParameterInfo[] parameters,
+        out Expression[] convertedArguments,
+        out int score)
+    {
+        var fixedCount = parameters.Length - 1;
+
+        if (arguments.Count < fixedCount)
+        {
+            convertedArguments = null!;
+            score = 0;
+            return false;
+        }
+
+        var elementType = parameters[^1].ParameterType.GetElementType()!;
+        var result = new Expression[parameters.Length];
+        var totalScore = 1; // params penalty
+
+        for (var i = 0; i < fixedCount; i++)
+        {
+            if (!TryConvertFunctionArgument(
+                    arguments[i],
+                    parameters[i].ParameterType,
+                    out var converted,
+                    out var convScore))
+            {
+                convertedArguments = null!;
+                score = 0;
+                return false;
+            }
+
+            result[i] = converted;
+            totalScore += convScore;
+        }
+
+        var paramsElements = new Expression[arguments.Count - fixedCount];
+
+        for (var i = fixedCount; i < arguments.Count; i++)
+        {
+            if (!TryConvertFunctionArgument(
+                    arguments[i],
+                    elementType,
+                    out var converted,
+                    out var convScore))
+            {
+                convertedArguments = null!;
+                score = 0;
+                return false;
+            }
+
+            paramsElements[i - fixedCount] = converted;
+            totalScore += convScore;
+        }
+
+        result[fixedCount] = Expression.NewArrayInit(elementType, paramsElements);
+        convertedArguments = result;
+        score = totalScore;
+        return true;
     }
 
     private static bool TryConvertFunctionArgument(

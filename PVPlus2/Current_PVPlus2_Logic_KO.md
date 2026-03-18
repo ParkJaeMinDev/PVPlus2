@@ -221,11 +221,20 @@
 - class 자체가 `static`
 - public static 메서드를 reflection으로 수집
 - 함수 이름 lookup은 대소문자 무시
-- 현재 테스트용 메서드는 다음 두 개뿐이다.
-  - `test(long a)`
-  - `test(double a)`
 
-함수 호출 파싱 구조는 이미 들어가 있지만, 현재 벤치마크 수식에는 아직 custom function을 넣지 않은 상태다.
+현재 등록된 함수 목록:
+
+- `Min(params double[])`, `Max(params double[])` — 가변 인수, `double` 반환
+- `Abs(long)`, `Abs(double)`
+- `Floor(long)`, `Floor(double)`
+- `Ceiling(long)`, `Ceiling(double)`
+- `Round(long)`, `Round(double)` — `MidpointRounding.AwayFromZero` 사용
+- `Round(long, long)`, `Round(double, long)` — digits 인수 버전, 동일하게 `AwayFromZero`
+- `Pow(long, long)`, `Pow(double, double)`, `Pow(long, double)`, `Pow(double, long)`
+- `Sqrt(long)`, `Sqrt(double)`
+- `Truncate(long)`, `Truncate(double)`
+- `Sign(long)`, `Sign(double)` — `long` 반환
+- `test(long)`, `test(double)` — 테스트 전용
 
 ## ExpressionCompiler
 
@@ -420,21 +429,127 @@
 
 기호 연산자 자체는 당연히 대소문자와 무관하다.
 
-### 함수 호출 지원
+### 특수 내장 함수
+
+현재 compiler는 reflection 함수 경로와 별도로 특수 함수 전용 바인더 계층을 가진다.
+
+#### `if`
+
+문법:
+
+- `if(condition, true_value, false_value)`
+
+규칙:
+
+- 인수는 정확히 3개
+- `condition`은 반드시 `bool`
+- `true_value`와 `false_value`는 같은 타입이거나, 둘 다 숫자형(`double` 승격)
+- `Expression.Condition(...)`으로 컴파일 — 런타임에는 선택된 브랜치만 평가
+- `if(True, 1, "x")` 같은 타입 불일치 브랜치는 컴파일 시 오류
+
+예:
+
+- `if(x > 5, x * 2, 0.0)`
+- `if(True, "A", "B")`
+- `if(x > y, x + y, x - y)`
+
+#### `ifs`
+
+문법:
+
+- `ifs(condition1, value1, condition2, value2, ..., conditionN, valueN, default_value)`
+
+규칙:
+
+- 인수 개수는 홀수, 최소 3개
+- 각 `conditionN`은 반드시 `bool`
+- 모든 `valueN`과 `default_value`는 같은 타입이거나, 모두 숫자형(`double` 승격)
+- 오른쪽에서 왼쪽으로 중첩 `Expression.Condition(...)`으로 컴파일 — 런타임에는 일치하는 브랜치와 해당 값만 평가
+- 첫 번째 일치 이후의 브랜치는 절대 평가되지 않음
+
+예:
+
+- `ifs(x > 10, "high", x > 5, "mid", "low")`
+- `ifs(x > y + 100, x + y, x > y, x - y, y - x)`
+
+#### `cast`
+
+문법:
+
+- `cast(value, type)`
+
+규칙:
+
+- 인수는 정확히 2개
+- 두 번째 인수는 타입명 identifier여야 함
+- 지원 타입 alias:
+  - `int`, `int32` → `long`
+  - `long`, `int64` → `long`
+  - `double`, `float64` → `double`
+  - `bool`, `boolean` → `bool`
+  - `string` → `string`
+- `float`, `single`은 명시적으로 미지원 (컴파일 오류)
+- 숫자↔숫자 변환은 `Expression.Convert` 사용
+- 동일 타입 cast는 항등
+- 비숫자 타입 간 변환은 컴파일 시 오류
+- `double` → `long` 경계값(NaN, Infinity) 동작은 CLR에 위임
+
+예:
+
+- `cast(1.9, int)` → `1L`
+- `cast(x, double)` → `x`가 이미 `double`이면 항등
+
+#### 함수 바인더 아키텍처
+
+`CreateFunctionCallExpression`이 현재 함수 바인딩의 단일 진입점이다.
+
+동작 순서:
+
+1. `TryBindSpecialFunction(name, rawArguments, out expression)`을 먼저 호출
+2. `true`를 반환하면 해당 특수 표현식을 바로 반환 (인수는 아직 바인딩되지 않은 상태)
+3. 아니면 모든 인수를 `BindSyntax`로 바인딩한 뒤 `CreateReflectionFunctionCallExpression`으로 전달
+
+이 구조 덕분에 특수 함수는 `AstNode` 미바인딩 상태로 인수를 받을 수 있어 short-circuit 의미가 보장된다.
+
+### 일반 함수 호출 지원
 
 현재 문법:
 
 - `name(arg1, arg2, ...)`
+- 최소 인수 1개 필요 — `fn()` 형태는 파서 단계에서 `FormatException`으로 거부됨
 
 현재 binding 규칙:
 
 - 함수 이름은 `ExpressionFunctions`에서 찾음
 - public static method만 허용
-- overload resolution 순서
-  - exact type match 우선
-  - 그 다음 `long -> double`
-  - 그 다음 `double -> long`
-- 같은 점수의 overload가 둘 이상이면 ambiguous로 처리
+- overload resolution 점수:
+  - 완전 일치: 0
+  - `long` → `double`: 1
+  - `double` → `long`: 1
+  - `IsAssignableFrom` / `object`: 2
+  - `params` 후보 penalty: +1
+- 모든 후보를 끝까지 순회한 뒤 최종 ambiguous 판정 — 루프 중간에 즉시 예외를 던지지 않음
+- 최저 score가 순회 종료 후에도 복수 후보에 해당하면 ambiguous 오류
+
+### `params T[]` 지원
+
+마지막 파라미터가 `params T[]`인 메서드를 지원한다.
+
+규칙:
+
+- 마지막 파라미터의 `ParamArrayAttribute` 감지로 판별
+- `arguments.Count >= 고정파라미터수` 조건 필요
+- 고정 파라미터는 개별적으로 기존 방식 변환
+- trailing 인수는 각각 원소 타입으로 변환 후 `Expression.NewArrayInit(...)`으로 묶음
+- `params` 후보는 score에 +1 penalty — 고정 arity 오버로드가 항상 우선
+
+`ExpressionFunctions` 작성 시 원소 타입 선택 기준:
+
+| 원소 타입 | 용도 |
+|---|---|
+| `double[]` | 숫자 계산 함수 기본값 |
+| `long[]` | 정수 반환이 명시적으로 필요한 경우 |
+| `object[]` | 이종 인수 함수 전용 — 숫자 함수에 사용 금지 |
 
 ### 현재 런타임 특이점
 
@@ -461,14 +576,13 @@
 - scientific notation 숫자
 - 천 단위 구분자 숫자
 - percent literal
-- ternary syntax
-- 전용 `If(...)` 지원
 - string 관계 비교
 - literal/concat/equality 외의 일반 string 함수군
-- test 함수 외의 실제 함수군
+- `ExpressionContext` 인식 함수 주입 (예정: 첫 파라미터 `_contextParameter` 자동 주입)
 - `ExpressionContext`를 넘는 업무 도메인 변수 바인딩
 - 일반 배열 인덱싱
 - legacy Flee와의 완전한 기능 호환
+- 0인수 함수 호출 문법 (`fn()` 형태는 현재 정책상 파서 단계에서 거부)
 
 ## TestView와 테스트 하네스
 
@@ -610,10 +724,13 @@ String 검증은 다음을 비교한다.
 
 가장 자연스러운 다음 단계는 아래와 같다.
 
-1. 나머지 Excel 시트 로더 구현
-2. `ExpressionContext`를 넘어서는 실제 업무 변수 바인딩 설계
-3. `ExpressionFunctions`에 실제 함수군 추가
-4. 현재 concat/equality 중심의 string 지원을 어디까지 확장할지 결정
-5. edge case 중심 테스트를 업무 규칙 중심 테스트로 확장
-6. 로드된 rule 데이터와 런타임 평가 계층 연결
-7. 이후 계산 파이프라인 연결
+1. `ExpressionContext` 인식 함수 주입 구현 (`ProductNameContains`, `RiderNameContains` 등) — 명세서: `LLM_MD_FILES/ContextInjectionForFunctions_claude.md`
+2. `ExpressionContext`에 `ProductName`, `RiderName` 프로퍼티 추가
+3. 나머지 Excel 시트 로더 구현
+4. `ExpressionContext`를 넘어서는 실제 업무 변수 바인딩 설계
+5. 현재 concat/equality 중심의 string 지원을 어디까지 확장할지 결정
+6. edge case 중심 테스트를 업무 규칙 중심 테스트로 확장
+7. 로드된 rule 데이터와 런타임 평가 계층 연결
+8. 이후 계산 파이프라인 연결
+
+비고: `ExpressionContext`는 추후 리팩토링 시 `CommutationTable`로 이름 변경 예정.
