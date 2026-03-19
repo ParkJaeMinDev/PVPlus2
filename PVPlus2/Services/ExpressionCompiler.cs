@@ -344,7 +344,7 @@ public class ExpressionCompiler
         return false;
     }
 
-    private static Expression CreateIfExpression(IReadOnlyList<AstNode> arguments)
+    private static ConditionalExpression CreateIfExpression(IReadOnlyList<AstNode> arguments)
     {
         if (arguments.Count != 3)
         {
@@ -457,7 +457,7 @@ public class ExpressionCompiler
 
     private static MethodCallExpression CreateReflectionFunctionCallExpression(
         string functionName,
-        IReadOnlyList<Expression> arguments)
+        Expression[] arguments)
     {
         if (!_registeredFunctions.TryGetValue(functionName, out var candidates))
         {
@@ -471,51 +471,9 @@ public class ExpressionCompiler
 
         foreach (var candidate in candidates)
         {
-            var parameters = candidate.GetParameters();
-            var isParams = parameters.Length > 0
-                && parameters[^1].GetCustomAttribute<ParamArrayAttribute>() != null;
-
-            int score;
-            Expression[] convertedArguments;
-
-            if (isParams)
+            if (!TryConvertFunctionCallArguments(candidate, arguments, out var convertedArguments, out var score))
             {
-                if (!TryConvertParamArrayFunctionArguments(arguments, parameters, out convertedArguments, out score))
-                {
-                    continue;
-                }
-            }
-            else
-            {
-                if (parameters.Length != arguments.Count)
-                {
-                    continue;
-                }
-
-                convertedArguments = new Expression[arguments.Count];
-                score = 0;
-                var success = true;
-
-                for (var i = 0; i < arguments.Count; i++)
-                {
-                    if (!TryConvertFunctionArgument(
-                            arguments[i],
-                            parameters[i].ParameterType,
-                            out var convertedArgument,
-                            out var conversionScore))
-                    {
-                        success = false;
-                        break;
-                    }
-
-                    convertedArguments[i] = convertedArgument;
-                    score += conversionScore;
-                }
-
-                if (!success)
-                {
-                    continue;
-                }
+                continue;
             }
 
             if (score < bestScore)
@@ -536,7 +494,7 @@ public class ExpressionCompiler
         if (bestMethod == null || bestArguments == null)
         {
             throw new InvalidOperationException(
-                $"No matching overload found for function '{functionName}' with {arguments.Count} argument(s).");
+                $"No matching overload found for function '{functionName}' with {arguments.Length} argument(s).");
         }
 
         if (bestIsAmbiguous)
@@ -547,15 +505,127 @@ public class ExpressionCompiler
         return Expression.Call(bestMethod, bestArguments);
     }
 
+    private static bool TryConvertFunctionCallArguments(
+        MethodInfo candidate,
+        Expression[] arguments,
+        out Expression[] convertedArguments,
+        out int score)
+    {
+        var parameters = candidate.GetParameters();
+        var isContextInjected = parameters.Length > 0
+            && parameters[0].ParameterType == typeof(ExpressionContext);
+        var isParams = parameters.Length > 0
+            && parameters[^1].GetCustomAttribute<ParamArrayAttribute>() != null;
+
+        // 명세 기준: context + params 조합은 이번 릴리스에서 지원하지 않는다.
+        if (isContextInjected && isParams)
+        {
+            convertedArguments = null!;
+            score = 0;
+            return false;
+        }
+
+        if (isContextInjected)
+        {
+            return TryConvertContextInjectedFunctionArguments(arguments, parameters, out convertedArguments, out score);
+        }
+
+        if (isParams)
+        {
+            return TryConvertParamArrayFunctionArguments(arguments, parameters, out convertedArguments, out score);
+        }
+
+        return TryConvertFixedArityFunctionArguments(arguments, parameters, out convertedArguments, out score);
+    }
+
+    private static bool TryConvertFixedArityFunctionArguments(
+        Expression[] arguments,
+        ParameterInfo[] parameters,
+        out Expression[] convertedArguments,
+        out int score)
+    {
+        if (parameters.Length != arguments.Length)
+        {
+            convertedArguments = null!;
+            score = 0;
+            return false;
+        }
+
+        var result = new Expression[arguments.Length];
+        var totalScore = 0;
+
+        for (var i = 0; i < arguments.Length; i++)
+        {
+            if (!TryConvertFunctionArgument(
+                    arguments[i],
+                    parameters[i].ParameterType,
+                    out var convertedArgument,
+                    out var conversionScore))
+            {
+                convertedArguments = null!;
+                score = 0;
+                return false;
+            }
+
+            result[i] = convertedArgument;
+            totalScore += conversionScore;
+        }
+
+        convertedArguments = result;
+        score = totalScore;
+        return true;
+    }
+
+    private static bool TryConvertContextInjectedFunctionArguments(
+        Expression[] arguments,
+        ParameterInfo[] parameters,
+        out Expression[] convertedArguments,
+        out int score)
+    {
+        var effectiveParameterCount = parameters.Length - 1;
+
+        if (arguments.Length != effectiveParameterCount)
+        {
+            convertedArguments = null!;
+            score = 0;
+            return false;
+        }
+
+        var result = new Expression[parameters.Length];
+        result[0] = _contextParameter;
+        var totalScore = 0;
+
+        for (var i = 1; i < parameters.Length; i++)
+        {
+            if (!TryConvertFunctionArgument(
+                    arguments[i - 1],
+                    parameters[i].ParameterType,
+                    out var convertedArgument,
+                    out var conversionScore))
+            {
+                convertedArguments = null!;
+                score = 0;
+                return false;
+            }
+
+            result[i] = convertedArgument;
+            totalScore += conversionScore;
+        }
+
+        convertedArguments = result;
+        score = totalScore;
+        return true;
+    }
+
     private static bool TryConvertParamArrayFunctionArguments(
-        IReadOnlyList<Expression> arguments,
+        Expression[] arguments,
         ParameterInfo[] parameters,
         out Expression[] convertedArguments,
         out int score)
     {
         var fixedCount = parameters.Length - 1;
 
-        if (arguments.Count < fixedCount)
+        if (arguments.Length < fixedCount)
         {
             convertedArguments = null!;
             score = 0;
@@ -583,9 +653,9 @@ public class ExpressionCompiler
             totalScore += convScore;
         }
 
-        var paramsElements = new Expression[arguments.Count - fixedCount];
+        var paramsElements = new Expression[arguments.Length - fixedCount];
 
-        for (var i = fixedCount; i < arguments.Count; i++)
+        for (var i = fixedCount; i < arguments.Length; i++)
         {
             if (!TryConvertFunctionArgument(
                     arguments[i],
@@ -657,7 +727,7 @@ public class ExpressionCompiler
         return Expression.Property(_contextParameter, property);
     }
 
-    private static AstNode CreateNumberLiteralNode(Parlot.TextSpan textSpan)
+    private static NumberLiteralNode CreateNumberLiteralNode(Parlot.TextSpan textSpan)
     {
         var span = textSpan.Span;
 
@@ -717,7 +787,7 @@ public class ExpressionCompiler
         return operand;
     }
 
-    private static Expression BuildUnaryNegateExpression(Expression operand)
+    private static UnaryExpression BuildUnaryNegateExpression(Expression operand)
     {
         if (!IsNumericType(operand.Type))
         {
@@ -737,7 +807,7 @@ public class ExpressionCompiler
         return BuildNumericBinaryExpression(left, right, Expression.Add);
     }
 
-    private static Expression BuildStringConcatExpression(Expression left, Expression right)
+    private static MethodCallExpression BuildStringConcatExpression(Expression left, Expression right)
     {
         return Expression.Call(
             _stringConcatMethod,

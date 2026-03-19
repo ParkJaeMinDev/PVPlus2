@@ -197,6 +197,7 @@ The runtime is now built around:
 Current shape:
 
 - public `double` properties from `a` through `z`
+- `string` properties: `상품명`, `담보명` (Korean field names retained for now; rename planned in a future refactoring pass)
 
 Important current meaning:
 
@@ -235,6 +236,16 @@ Currently registered functions:
 - `Truncate(long)`, `Truncate(double)`
 - `Sign(long)`, `Sign(double)` — returns `long`
 - `test(long)`, `test(double)` — testing only
+
+Context-injected functions (first parameter is `ExpressionContext`, injected automatically by the binder):
+
+- `ProductNameContains(ExpressionContext, string)` — checks if `상품명` contains the given substring (`StringComparison.Ordinal`)
+- `RiderNameContains(ExpressionContext, string)` — checks if `담보명` contains the given substring (`StringComparison.Ordinal`)
+
+Usage in expressions (no context argument written by the expression author):
+
+- `ProductNameContains("종신")`
+- `RiderNameContains("암")`
 
 ## ExpressionCompiler
 
@@ -543,6 +554,28 @@ Rules:
 - trailing arguments are each converted to the element type and bundled into `Expression.NewArrayInit(...)`
 - `params` candidates carry a `+1` score penalty so fixed-arity overloads always win when scores are equal
 
+### Context-injected function support
+
+Methods whose first parameter is `ExpressionContext` are automatically detected by the binder and treated as context-injected functions.
+
+Rules:
+
+- detection condition: `parameters[0].ParameterType == typeof(ExpressionContext)`
+- the binder injects `_contextParameter` at index 0 automatically
+- expression authors omit the context argument entirely
+- effective argument count for matching: `parameters.Length - 1`
+- no score penalty — injection is an identity connection, not a conversion
+- `context + params` combination is not supported in this release (skipped by the binder)
+- the three matching paths (`isContextInjected`, `isParams`, fixed-arity) are dispatched through `TryConvertFunctionCallArguments`
+
+Unsupported function forms (binder will fail to match):
+
+- `ExpressionContext` not in the first parameter position
+- optional parameters
+- generic methods
+- `ref` / `out` / `in` parameters
+- context-injected + `params` combination
+
 Element type guidelines for `ExpressionFunctions` authors:
 
 | Element type | Intended use |
@@ -579,7 +612,6 @@ Still not implemented:
 - percent literals
 - string relational operators
 - general string function support beyond literal/concat/equality
-- `ExpressionContext`-aware function injection (planned: first-parameter auto-injection of `_contextParameter`)
 - domain-aware business variable binding beyond `ExpressionContext`
 - array indexing in the general expression language
 - legacy Flee-compatible full feature parity
@@ -723,13 +755,11 @@ Current limitations include:
 
 The natural next steps are:
 
-1. implement `ExpressionContext`-aware function injection (`ProductNameContains`, `RiderNameContains` etc.) — spec exists at `LLM_MD_FILES/ContextInjectionForFunctions_claude.md`
-2. add `ProductName`, `RiderName` properties to `ExpressionContext`
-3. implement the remaining Excel sheet loaders
-4. decide the final shape of business variable binding beyond `ExpressionContext`
-5. decide how far string support should go beyond the current concat/equality subset
-6. add business-focused expression tests instead of only edge-case/runtime tests
-7. connect loaded rule data to a runtime evaluation layer
-8. connect the future calculation pipeline
+1. implement the remaining Excel sheet loaders
+2. decide the final shape of business variable binding beyond `ExpressionContext`
+3. decide how far string support should go beyond the current concat/equality subset
+4. add business-focused expression tests instead of only edge-case/runtime tests
+5. connect loaded rule data to a runtime evaluation layer
+6. connect the future calculation pipeline
 
-Note: `ExpressionContext` is planned to be renamed to `CommutationTable` in a future refactoring pass.
+Note: `ExpressionContext` is planned to be renamed to `CommutationTable` in a future refactoring pass. Field names `상품명` and `담보명` may also be renamed to English at that time.

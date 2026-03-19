@@ -197,6 +197,7 @@
 현재 형태:
 
 - `a`부터 `z`까지 public `double` property
+- `string` property: `상품명`, `담보명` (현재 한글 필드명 유지 — 추후 리팩토링 시 변경 예정)
 
 현재 의미:
 
@@ -235,6 +236,16 @@
 - `Truncate(long)`, `Truncate(double)`
 - `Sign(long)`, `Sign(double)` — `long` 반환
 - `test(long)`, `test(double)` — 테스트 전용
+
+컨텍스트 주입 함수 (첫 파라미터가 `ExpressionContext`이며 바인더가 자동 주입):
+
+- `ProductNameContains(ExpressionContext, string)` — `상품명`에 지정 문자열 포함 여부 (`StringComparison.Ordinal`)
+- `RiderNameContains(ExpressionContext, string)` — `담보명`에 지정 문자열 포함 여부 (`StringComparison.Ordinal`)
+
+수식에서는 컨텍스트 인수 없이 호출:
+
+- `ProductNameContains("종신")`
+- `RiderNameContains("암")`
 
 ## ExpressionCompiler
 
@@ -543,6 +554,28 @@
 - trailing 인수는 각각 원소 타입으로 변환 후 `Expression.NewArrayInit(...)`으로 묶음
 - `params` 후보는 score에 +1 penalty — 고정 arity 오버로드가 항상 우선
 
+### 컨텍스트 주입 함수 지원
+
+첫 파라미터가 `ExpressionContext`인 메서드는 바인더가 자동으로 감지하여 컨텍스트 주입 메서드로 처리한다.
+
+규칙:
+
+- 감지 조건: `parameters[0].ParameterType == typeof(ExpressionContext)`
+- `_contextParameter`를 index 0에 자동 주입
+- 수식 작성자는 컨텍스트 인수를 쓰지 않음
+- 매칭 기준 인수 수: `parameters.Length - 1`
+- score penalty 없음 — 주입은 변환이 아닌 항등 연결
+- context + params 조합은 이번 릴리스 미지원 (바인더가 skip)
+- 세 경로(컨텍스트 주입 / params / 고정 arity)는 `TryConvertFunctionCallArguments`에서 분기
+
+미지원 함수 형태 (바인더가 매칭 실패):
+
+- 첫 번째가 아닌 위치의 `ExpressionContext`
+- optional parameter 의존 함수
+- generic method
+- `ref` / `out` / `in` 파라미터 함수
+- 컨텍스트 주입 + `params` 조합
+
 `ExpressionFunctions` 작성 시 원소 타입 선택 기준:
 
 | 원소 타입 | 용도 |
@@ -578,7 +611,6 @@
 - percent literal
 - string 관계 비교
 - literal/concat/equality 외의 일반 string 함수군
-- `ExpressionContext` 인식 함수 주입 (예정: 첫 파라미터 `_contextParameter` 자동 주입)
 - `ExpressionContext`를 넘는 업무 도메인 변수 바인딩
 - 일반 배열 인덱싱
 - legacy Flee와의 완전한 기능 호환
@@ -724,13 +756,11 @@ String 검증은 다음을 비교한다.
 
 가장 자연스러운 다음 단계는 아래와 같다.
 
-1. `ExpressionContext` 인식 함수 주입 구현 (`ProductNameContains`, `RiderNameContains` 등) — 명세서: `LLM_MD_FILES/ContextInjectionForFunctions_claude.md`
-2. `ExpressionContext`에 `ProductName`, `RiderName` 프로퍼티 추가
-3. 나머지 Excel 시트 로더 구현
-4. `ExpressionContext`를 넘어서는 실제 업무 변수 바인딩 설계
-5. 현재 concat/equality 중심의 string 지원을 어디까지 확장할지 결정
-6. edge case 중심 테스트를 업무 규칙 중심 테스트로 확장
-7. 로드된 rule 데이터와 런타임 평가 계층 연결
-8. 이후 계산 파이프라인 연결
+1. 나머지 Excel 시트 로더 구현
+2. `ExpressionContext`를 넘어서는 실제 업무 변수 바인딩 설계
+3. 현재 concat/equality 중심의 string 지원을 어디까지 확장할지 결정
+4. edge case 중심 테스트를 업무 규칙 중심 테스트로 확장
+5. 로드된 rule 데이터와 런타임 평가 계층 연결
+6. 이후 계산 파이프라인 연결
 
-비고: `ExpressionContext`는 추후 리팩토링 시 `CommutationTable`로 이름 변경 예정.
+비고: `ExpressionContext`는 추후 리팩토링 시 `CommutationTable`로 이름 변경 예정. 이 시점에 `상품명`, `담보명` 필드명도 영문으로 변경 예정.

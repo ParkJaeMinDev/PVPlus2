@@ -2,6 +2,14 @@ namespace PVPlus2.Models;
 
 public class ExpressionContext
 {
+    public string 상품코드 { get; set; }
+    public string 판매시기 { get; set; }
+    public string 상품명 { get; set; }
+    public double 예정이율 { get; set; }
+    public double 평균공시이율 { get; set; }
+    public int 판매채널 { get; set; }
+    public string 담보코드 { get; set; }
+    public string 담보명 { get; set; }
     public double a { get; set; }
     public double b { get; set; }
     public double c { get; set; }

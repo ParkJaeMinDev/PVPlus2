@@ -1,4 +1,5 @@
 using System;
+using System.Reflection;
 using PVPlus2.Models;
 using PVPlus2.Services;
 using Xunit;
@@ -105,10 +106,66 @@ public class ExpressionFunctionTests
     }
 
     [Fact]
+    public void Product_And_Rider_Name_Functions_Return_Expected_Values()
+    {
+        var productMatch = ExpressionCompiler.CompileBool("ProductNameContains(\"종신\")");
+        var productMiss = ExpressionCompiler.CompileBool("ProductNameContains(\"화재\")");
+        var riderMatch = ExpressionCompiler.CompileBool("RiderNameContains(\"암\")");
+        var combinedMatch = ExpressionCompiler.CompileBool("ProductNameContains(\"종신\") AND RiderNameContains(\"암\")");
+        var lowerCaseFunctionName = ExpressionCompiler.CompileBool("productnamecontains(\"종신\")");
+
+        var context = ExpressionTestHelper.CreateCompilerContext(10d, 2d);
+        context.상품명 = "종신보험";
+        context.담보명 = "암진단특약";
+
+        Assert.True(productMatch(context));
+        Assert.False(productMiss(context));
+        Assert.True(riderMatch(context));
+        Assert.True(combinedMatch(context));
+        Assert.True(lowerCaseFunctionName(context));
+    }
+
+    [Fact]
+    public void Product_And_Rider_Name_Functions_Reject_Invalid_Expression_Arguments()
+    {
+        ExpressionTestHelper.AssertCompilerExpressionFails("ProductNameContains(1)", ExpressionCompiler.CompileBool);
+        ExpressionTestHelper.AssertCompilerExpressionFails("ProductNameContains()", ExpressionCompiler.CompileBool);
+        ExpressionTestHelper.AssertCompilerExpressionFails("ProductNameContains(\"a\", \"b\")", ExpressionCompiler.CompileBool);
+        ExpressionTestHelper.AssertCompilerExpressionFails("RiderNameContains(1)", ExpressionCompiler.CompileBool);
+        ExpressionTestHelper.AssertCompilerExpressionFails("RiderNameContains()", ExpressionCompiler.CompileBool);
+        ExpressionTestHelper.AssertCompilerExpressionFails("RiderNameContains(\"a\", \"b\")", ExpressionCompiler.CompileBool);
+    }
+
+    [Fact]
+    public void Product_And_Rider_Name_Functions_Throw_ArgumentNullException_For_Null_Search_Term()
+    {
+        var productMethod = GetExpressionFunction("ProductNameContains");
+        var riderMethod = GetExpressionFunction("RiderNameContains");
+        var context = new ExpressionContext
+        {
+            상품명 = "종신보험",
+            담보명 = "암진단특약"
+        };
+
+        var productException = Assert.Throws<TargetInvocationException>(() => productMethod.Invoke(null, [context, null]));
+        var riderException = Assert.Throws<TargetInvocationException>(() => riderMethod.Invoke(null, [context, null]));
+
+        Assert.IsType<ArgumentNullException>(productException.InnerException);
+        Assert.IsType<ArgumentNullException>(riderException.InnerException);
+    }
+
+    [Fact]
     public void Invalid_Function_Arguments_Throw_In_Compiler()
     {
         ExpressionTestHelper.AssertCompilerExpressionFails("abs(True)", ExpressionCompiler.CompileLong);
         ExpressionTestHelper.AssertCompilerExpressionFails("min(True, 1)", ExpressionCompiler.CompileDouble);
         ExpressionTestHelper.AssertCompilerExpressionFails("sqrt(\"a\")", ExpressionCompiler.CompileDouble);
+    }
+
+    private static MethodInfo GetExpressionFunction(string methodName)
+    {
+        var expressionFunctionsType = typeof(ExpressionCompiler).Assembly.GetType("PVPlus2.Services.ExpressionFunctions", throwOnError: true)!;
+        return expressionFunctionsType.GetMethod(methodName, BindingFlags.Public | BindingFlags.Static)
+            ?? throw new InvalidOperationException($"ExpressionFunctions method '{methodName}' was not found.");
     }
 }
