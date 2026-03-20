@@ -13,7 +13,7 @@ namespace PVPlus2.Services;
 public class ExpressionCompiler
 {
     private static readonly ParameterExpression _contextParameter =
-        Expression.Parameter(typeof(ExpressionContext), "context");
+        Expression.Parameter(typeof(CommutationTable), "context");
 
     private static readonly Parser<AstNode> _parser = BuildParser();
 
@@ -26,42 +26,149 @@ public class ExpressionCompiler
     private static readonly MethodInfo _stringConcatMethod =
         typeof(string).GetMethod(nameof(string.Concat), new[] { typeof(object), typeof(object) })!;
 
-    public static Func<ExpressionContext, double> CompileDouble(string text)
+    public static Func<CommutationTable, double> CompileDouble(string text)
     {
         var body = BindExpression(text);
         body = ConvertReturnExpression(body, typeof(double));
 
-        return Expression.Lambda<Func<ExpressionContext, double>>(body, _contextParameter).Compile();
+        return Expression.Lambda<Func<CommutationTable, double>>(body, _contextParameter).Compile();
     }
 
-    public static Func<ExpressionContext, long> CompileLong(string text)
+    public static Func<CommutationTable, long> CompileLong(string text)
     {
         var body = BindExpression(text);
         body = ConvertReturnExpression(body, typeof(long));
 
-        return Expression.Lambda<Func<ExpressionContext, long>>(body, _contextParameter).Compile();
+        return Expression.Lambda<Func<CommutationTable, long>>(body, _contextParameter).Compile();
     }
 
-    public static Func<ExpressionContext, bool> CompileBool(string text)
+    public static Func<CommutationTable, bool> CompileBool(string text)
     {
         var body = BindExpression(text);
         body = ConvertReturnExpression(body, typeof(bool));
 
-        return Expression.Lambda<Func<ExpressionContext, bool>>(body, _contextParameter).Compile();
+        return Expression.Lambda<Func<CommutationTable, bool>>(body, _contextParameter).Compile();
     }
 
-    public static Func<ExpressionContext, string> CompileString(string text)
+    public static Func<CommutationTable, string> CompileString(string text)
     {
         var body = BindExpression(text);
         body = ConvertReturnExpression(body, typeof(string));
 
-        return Expression.Lambda<Func<ExpressionContext, string>>(body, _contextParameter).Compile();
+        return Expression.Lambda<Func<CommutationTable, string>>(body, _contextParameter).Compile();
+    }
+
+    public static Action<CommutationTable, double[]> CompileDoubleArrayInto(string text)
+    {
+        var syntax = ParseExpression(text);
+        var targetParameter = Expression.Parameter(typeof(double[]), "target");
+        var index = Expression.Variable(typeof(int), "i");
+        var requiredLength = Expression.Variable(typeof(int), "requiredLength");
+        var breakLabel = Expression.Label("LoopBreak");
+        var referencedArrayProperties =
+            new Dictionary<string, PropertyInfo>(StringComparer.OrdinalIgnoreCase);
+
+        _ = BindSyntax(syntax, index, null, referencedArrayProperties);
+
+        var hoistedArrayLocals =
+            new Dictionary<string, ParameterExpression>(StringComparer.OrdinalIgnoreCase);
+        var locals = new List<ParameterExpression> { index, requiredLength };
+        var prologue = new List<Expression>
+        {
+            CreateNRangeGuard(),
+            Expression.Assign(
+                requiredLength,
+                Expression.ConvertChecked(
+                    Expression.AddChecked(
+                        Expression.Property(_contextParameter, nameof(CommutationTable.n)),
+                        Expression.Constant(1L)),
+                    typeof(int))),
+            CreateMinLengthGuard(
+                targetParameter,
+                requiredLength,
+                "target length is smaller than n + 1.")
+        };
+
+        foreach (var (_, property) in referencedArrayProperties)
+        {
+            var local = Expression.Variable(typeof(double[]), $"src_{property.Name}");
+
+            hoistedArrayLocals[property.Name] = local;
+            locals.Add(local);
+
+            prologue.Add(Expression.Assign(
+                local,
+                Expression.Property(_contextParameter, property)));
+
+            prologue.Add(CreateMinLengthGuard(
+                local,
+                requiredLength,
+                $"source '{property.Name}' length is smaller than n + 1."));
+        }
+
+        var bodyExpression = BindSyntax(syntax, index, hoistedArrayLocals, null);
+        bodyExpression = ConvertReturnExpression(bodyExpression, typeof(double));
+
+        var loop = Expression.Loop(
+            Expression.Block(
+                Expression.IfThen(
+                    Expression.GreaterThanOrEqual(index, requiredLength),
+                    Expression.Break(breakLabel)),
+                Expression.Assign(
+                    Expression.ArrayAccess(targetParameter, index),
+                    bodyExpression),
+                Expression.PostIncrementAssign(index)),
+            breakLabel);
+
+        var blockExpressions = new List<Expression>(prologue)
+        {
+            Expression.Assign(index, Expression.Constant(0)),
+            loop
+        };
+
+        var block = Expression.Block(locals, blockExpressions);
+
+        return Expression.Lambda<Action<CommutationTable, double[]>>(
+            block,
+            _contextParameter,
+            targetParameter).Compile();
+    }
+
+    public static Action<CommutationTable> CompileDoubleArrayAssignment(
+        string targetPropertyName,
+        string text)
+    {
+        var writer = CompileDoubleArrayInto(text);
+
+        var property = typeof(CommutationTable).GetProperty(
+                targetPropertyName,
+                BindingFlags.Instance | BindingFlags.Public | BindingFlags.IgnoreCase)
+            ?? throw new KeyNotFoundException(
+                $"Property '{targetPropertyName}' is not defined on '{nameof(CommutationTable)}'.");
+
+        if (property.PropertyType != typeof(double[]))
+        {
+            throw new NotSupportedException(
+                $"Target property '{targetPropertyName}' is not double[].");
+        }
+
+        var ctxParameter = Expression.Parameter(typeof(CommutationTable), "ctx");
+        var getter = Expression.Lambda<Func<CommutationTable, double[]>>(
+            Expression.Property(ctxParameter, property),
+            ctxParameter).Compile();
+
+        return context => writer(context, getter(context));
+    }
+
+    private static AstNode ParseExpression(string text)
+    {
+        var key = NormalizeExpressionText(text);
+        return _parser.Parse(key) ?? throw new FormatException($"잘못된 수식입니다: {key}");
     }
 
     private static Expression BindExpression(string text)
     {
-        var key = NormalizeExpressionText(text);
-        var syntax = _parser.Parse(key) ?? throw new FormatException($"잘못된 수식입니다: {key}");
+        var syntax = ParseExpression(text);
         return BindSyntax(syntax);
     }
 
@@ -188,7 +295,17 @@ public class ExpressionCompiler
     }
 
     private static Expression BindSyntax(AstNode node)
+        => BindSyntax(node, null, null, null);
+
+    private static Expression BindSyntax(
+        AstNode node,
+        ParameterExpression? indexParameter,
+        IReadOnlyDictionary<string, ParameterExpression>? hoistedArrayLocals,
+        IDictionary<string, PropertyInfo>? referencedArrayProperties)
     {
+        Expression Bind(AstNode n) =>
+            BindSyntax(n, indexParameter, hoistedArrayLocals, referencedArrayProperties);
+
         return node switch
         {
             NumberLiteralNode literal => literal.Value switch
@@ -199,19 +316,27 @@ public class ExpressionCompiler
             },
             StringLiteralNode literal => Expression.Constant(MaterializeString(literal.Value), typeof(string)),
             BooleanLiteralNode literal => Expression.Constant(literal.Value),
-            IdentifierNode identifier => CreatePropertyExpression(identifier.Name),
+            IdentifierNode identifier => CreatePropertyExpression(
+                identifier.Name,
+                indexParameter,
+                hoistedArrayLocals,
+                referencedArrayProperties),
             FunctionCallNode functionCall => CreateFunctionCallExpression(
                 functionCall.Name,
-                functionCall.Arguments),
-            UnaryNode unary => BindUnaryExpression(unary),
-            BinaryNode binary => BindBinaryExpression(binary),
+                functionCall.Arguments,
+                Bind),
+            UnaryNode unary => BindUnaryExpression(unary, Bind),
+            BinaryNode binary => BindBinaryExpression(binary, Bind),
             _ => throw new NotSupportedException($"지원하지 않는 AST 노드입니다: {node.GetType()}")
         };
     }
 
     private static Expression BindUnaryExpression(UnaryNode node)
+        => BindUnaryExpression(node, BindSyntax);
+
+    private static Expression BindUnaryExpression(UnaryNode node, Func<AstNode, Expression> bind)
     {
-        var operand = BindSyntax(node.Operand);
+        var operand = bind(node.Operand);
 
         return node.Operator switch
         {
@@ -223,9 +348,12 @@ public class ExpressionCompiler
     }
 
     private static Expression BindBinaryExpression(BinaryNode node)
+        => BindBinaryExpression(node, BindSyntax);
+
+    private static Expression BindBinaryExpression(BinaryNode node, Func<AstNode, Expression> bind)
     {
-        var left = BindSyntax(node.Left);
-        var right = BindSyntax(node.Right);
+        var left = bind(node.Left);
+        var right = bind(node.Right);
 
         return node.Operator switch
         {
@@ -307,13 +435,19 @@ public class ExpressionCompiler
     }
 
     private static Expression CreateFunctionCallExpression(string functionName, IReadOnlyList<AstNode> rawArguments)
+        => CreateFunctionCallExpression(functionName, rawArguments, BindSyntax);
+
+    private static Expression CreateFunctionCallExpression(
+        string functionName,
+        IReadOnlyList<AstNode> rawArguments,
+        Func<AstNode, Expression> bind)
     {
-        if (TryBindSpecialFunction(functionName, rawArguments, out var specialExpression))
+        if (TryBindSpecialFunction(functionName, rawArguments, bind, out var specialExpression))
         {
             return specialExpression!;
         }
 
-        var boundArguments = rawArguments.Select(BindSyntax).ToArray();
+        var boundArguments = rawArguments.Select(bind).ToArray();
         return CreateReflectionFunctionCallExpression(functionName, boundArguments);
     }
 
@@ -321,22 +455,29 @@ public class ExpressionCompiler
         string functionName,
         IReadOnlyList<AstNode> rawArguments,
         out Expression? expression)
+        => TryBindSpecialFunction(functionName, rawArguments, BindSyntax, out expression);
+
+    private static bool TryBindSpecialFunction(
+        string functionName,
+        IReadOnlyList<AstNode> rawArguments,
+        Func<AstNode, Expression> bind,
+        out Expression? expression)
     {
         if (string.Equals(functionName, "if", StringComparison.OrdinalIgnoreCase))
         {
-            expression = CreateIfExpression(rawArguments);
+            expression = CreateIfExpression(rawArguments, bind);
             return true;
         }
 
         if (string.Equals(functionName, "ifs", StringComparison.OrdinalIgnoreCase))
         {
-            expression = CreateIfsExpression(rawArguments);
+            expression = CreateIfsExpression(rawArguments, bind);
             return true;
         }
 
         if (string.Equals(functionName, "cast", StringComparison.OrdinalIgnoreCase))
         {
-            expression = CreateCastExpression(rawArguments);
+            expression = CreateCastExpression(rawArguments, bind);
             return true;
         }
 
@@ -345,6 +486,11 @@ public class ExpressionCompiler
     }
 
     private static ConditionalExpression CreateIfExpression(IReadOnlyList<AstNode> arguments)
+        => CreateIfExpression(arguments, BindSyntax);
+
+    private static ConditionalExpression CreateIfExpression(
+        IReadOnlyList<AstNode> arguments,
+        Func<AstNode, Expression> bind)
     {
         if (arguments.Count != 3)
         {
@@ -352,9 +498,9 @@ public class ExpressionCompiler
                 $"if(condition, true_value, false_value) 형식이어야 합니다. 현재 인수 개수: {arguments.Count}");
         }
 
-        var condition = ConvertExpressionToBoolean(BindSyntax(arguments[0]));
-        var trueExpr = BindSyntax(arguments[1]);
-        var falseExpr = BindSyntax(arguments[2]);
+        var condition = ConvertExpressionToBoolean(bind(arguments[0]));
+        var trueExpr = bind(arguments[1]);
+        var falseExpr = bind(arguments[2]);
 
         (trueExpr, falseExpr) = UnifyBranchTypes(trueExpr, falseExpr);
 
@@ -362,6 +508,11 @@ public class ExpressionCompiler
     }
 
     private static Expression CreateIfsExpression(IReadOnlyList<AstNode> arguments)
+        => CreateIfsExpression(arguments, BindSyntax);
+
+    private static Expression CreateIfsExpression(
+        IReadOnlyList<AstNode> arguments,
+        Func<AstNode, Expression> bind)
     {
         if (arguments.Count < 3 || arguments.Count % 2 == 0)
         {
@@ -370,12 +521,12 @@ public class ExpressionCompiler
                 $"인수 개수는 홀수 3 이상이어야 합니다. 현재 인수 개수: {arguments.Count}");
         }
 
-        var result = BindSyntax(arguments[^1]);
+        var result = bind(arguments[^1]);
 
         for (var i = arguments.Count - 2; i >= 1; i -= 2)
         {
-            var trueExpr = BindSyntax(arguments[i]);
-            var condition = ConvertExpressionToBoolean(BindSyntax(arguments[i - 1]));
+            var trueExpr = bind(arguments[i]);
+            var condition = ConvertExpressionToBoolean(bind(arguments[i - 1]));
 
             (trueExpr, result) = UnifyBranchTypes(trueExpr, result);
 
@@ -386,6 +537,11 @@ public class ExpressionCompiler
     }
 
     private static Expression CreateCastExpression(IReadOnlyList<AstNode> arguments)
+        => CreateCastExpression(arguments, BindSyntax);
+
+    private static Expression CreateCastExpression(
+        IReadOnlyList<AstNode> arguments,
+        Func<AstNode, Expression> bind)
     {
         if (arguments.Count != 2)
         {
@@ -393,7 +549,7 @@ public class ExpressionCompiler
                 $"cast(value, type) 형식이어야 합니다. 현재 인수 개수: {arguments.Count}");
         }
 
-        var valueExpression = BindSyntax(arguments[0]);
+        var valueExpression = bind(arguments[0]);
         var targetType = ResolveCastTargetType(arguments[1]);
 
         return ConvertCastExpression(valueExpression, targetType);
@@ -413,6 +569,8 @@ public class ExpressionCompiler
             "double" or "float64" => typeof(double),
             "bool" or "boolean" => typeof(bool),
             "string" => typeof(string),
+            "float" or "single" => throw new NotSupportedException(
+                "float/single은 지원하지 않습니다. double을 사용하세요."),
             _ => throw new NotSupportedException($"cast에서 지원하지 않는 타입입니다: {identifier.Name}")
         };
     }
@@ -513,7 +671,7 @@ public class ExpressionCompiler
     {
         var parameters = candidate.GetParameters();
         var isContextInjected = parameters.Length > 0
-            && parameters[0].ParameterType == typeof(ExpressionContext);
+            && parameters[0].ParameterType == typeof(CommutationTable);
         var isParams = parameters.Length > 0
             && parameters[^1].GetCustomAttribute<ParamArrayAttribute>() != null;
 
@@ -717,14 +875,64 @@ public class ExpressionCompiler
         return false;
     }
 
-    private static MemberExpression CreatePropertyExpression(string name)
+    private static Expression CreatePropertyExpression(string name)
+        => CreatePropertyExpression(name, null, null, null);
+
+    private static Expression CreatePropertyExpression(
+        string name,
+        ParameterExpression? indexParameter,
+        IReadOnlyDictionary<string, ParameterExpression>? hoistedArrayLocals,
+        IDictionary<string, PropertyInfo>? referencedArrayProperties)
     {
-        var property = typeof(ExpressionContext).GetProperty(
+        if (string.Equals(name, "t", StringComparison.OrdinalIgnoreCase))
+        {
+            if (indexParameter is null)
+            {
+                throw new InvalidOperationException("'t' is only valid inside array expressions.");
+            }
+
+            return Expression.Convert(indexParameter, typeof(long));
+        }
+
+        var property = typeof(CommutationTable).GetProperty(
                 name,
                 BindingFlags.Instance | BindingFlags.Public | BindingFlags.IgnoreCase)
-            ?? throw new KeyNotFoundException($"Property '{name}' is not defined on '{nameof(ExpressionContext)}'.");
+            ?? throw new KeyNotFoundException($"Property '{name}' is not defined on '{nameof(CommutationTable)}'.");
 
-        return Expression.Property(_contextParameter, property);
+        var propertyExpr = Expression.Property(_contextParameter, property);
+
+        if (property.PropertyType.IsArray && !IsDoubleArrayType(property.PropertyType))
+        {
+            throw new NotSupportedException(
+                $"배열 프로퍼티 '{property.Name}'는 double[]만 지원합니다.");
+        }
+
+        if (IsDoubleArrayType(property.PropertyType))
+        {
+            if (indexParameter is null)
+            {
+                return propertyExpr;
+            }
+
+            referencedArrayProperties?.TryAdd(property.Name, property);
+
+            Expression arrayExpr = propertyExpr;
+
+            if (hoistedArrayLocals is not null &&
+                hoistedArrayLocals.TryGetValue(property.Name, out var local))
+            {
+                arrayExpr = local;
+            }
+
+            return Expression.ArrayIndex(arrayExpr, indexParameter);
+        }
+
+        return propertyExpr;
+    }
+
+    private static bool IsDoubleArrayType(Type type)
+    {
+        return type == typeof(double[]);
     }
 
     private static NumberLiteralNode CreateNumberLiteralNode(Parlot.TextSpan textSpan)
@@ -739,10 +947,10 @@ public class ExpressionCompiler
         if (span.IndexOf('.') >= 0)
         {
             if (!double.TryParse(
-                span,
-                NumberStyles.AllowDecimalPoint,
-                CultureInfo.InvariantCulture,
-                out var doubleValue))
+                    span,
+                    NumberStyles.AllowDecimalPoint,
+                    CultureInfo.InvariantCulture,
+                    out var doubleValue))
             {
                 throw new FormatException($"잘못된 실수입니다: {new string(span)}");
             }
@@ -751,10 +959,10 @@ public class ExpressionCompiler
         }
 
         if (!long.TryParse(
-            span,
-            NumberStyles.None,
-            CultureInfo.InvariantCulture,
-            out var longValue))
+                span,
+                NumberStyles.None,
+                CultureInfo.InvariantCulture,
+                out var longValue))
         {
             throw new FormatException($"잘못된 정수입니다: {new string(span)}");
         }
@@ -990,6 +1198,38 @@ public class ExpressionCompiler
 
         var operands = NormalizeNumericOperands(left, right);
         return operationFactory(operands.Left, operands.Right);
+    }
+
+    private static Expression CreateMinLengthGuard(
+        Expression arrayExpression,
+        Expression minLengthExpression,
+        string message)
+    {
+        return Expression.IfThen(
+            Expression.LessThan(
+                Expression.ArrayLength(arrayExpression),
+                minLengthExpression),
+            Expression.Throw(
+                Expression.New(
+                    typeof(ArgumentException).GetConstructor(new[] { typeof(string) })!,
+                    Expression.Constant(message))));
+    }
+
+    private static Expression CreateNRangeGuard()
+    {
+        var contextN = Expression.Property(_contextParameter, nameof(CommutationTable.n));
+
+        return Expression.IfThen(
+            Expression.OrElse(
+                Expression.LessThan(contextN, Expression.Constant(0L)),
+                Expression.GreaterThanOrEqual(
+                    contextN,
+                    Expression.Constant(CommutationTable.MAXSIZE))),
+            Expression.Throw(
+                Expression.New(
+                    typeof(ArgumentOutOfRangeException).GetConstructor(new[] { typeof(string), typeof(string) })!,
+                    Expression.Constant(nameof(CommutationTable.n)),
+                    Expression.Constant("context.n must be between 0 and MAXSIZE - 1."))));
     }
 
     private static bool IsIdentifierStartChar(char c)

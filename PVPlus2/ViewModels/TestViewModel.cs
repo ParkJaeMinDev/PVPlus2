@@ -21,10 +21,10 @@ public partial class TestViewModel : ObservableObject
     [ObservableProperty]
     private int _arrayLength = 1000;
 
-    private readonly Dictionary<string, Func<ExpressionContext, double>> _compiledDoubleExpressions = new();
-    private readonly Dictionary<string, Func<ExpressionContext, long>> _compiledLongExpressions = new();
-    private readonly Dictionary<string, Func<ExpressionContext, bool>> _compiledBoolExpressions = new();
-    private readonly Dictionary<string, Func<ExpressionContext, string>> _compiledStringExpressions = new();
+    private readonly Dictionary<string, Func<CommutationTable, double>> _compiledDoubleExpressions = new();
+    private readonly Dictionary<string, Func<CommutationTable, long>> _compiledLongExpressions = new();
+    private readonly Dictionary<string, Func<CommutationTable, bool>> _compiledBoolExpressions = new();
+    private readonly Dictionary<string, Func<CommutationTable, string>> _compiledStringExpressions = new();
 
     private const double ChecksumTolerance = 1e-9;
     private const int CompileRepeatCount = 100;
@@ -342,7 +342,7 @@ public partial class TestViewModel : ObservableObject
     }
 
     private static Dictionary<string, DoubleInvokeBenchmarkResult> BenchmarkCompiledDoubleInvocation(
-        IReadOnlyDictionary<string, Func<ExpressionContext, double>> compiledExpressions,
+        IReadOnlyDictionary<string, Func<CommutationTable, double>> compiledExpressions,
         double[] xValues,
         double[] yValues)
     {
@@ -351,7 +351,7 @@ public partial class TestViewModel : ObservableObject
 
         foreach (var pair in compiledExpressions)
         {
-            var context = new ExpressionContext();
+            var context = new CommutationTable();
             double checksum = 0.0;
 
             var sw = Stopwatch.StartNew();
@@ -409,7 +409,7 @@ public partial class TestViewModel : ObservableObject
     }
 
     private static Dictionary<string, LongInvokeBenchmarkResult> BenchmarkCompiledLongInvocation(
-        IReadOnlyDictionary<string, Func<ExpressionContext, long>> compiledExpressions,
+        IReadOnlyDictionary<string, Func<CommutationTable, long>> compiledExpressions,
         double[] xValues,
         double[] yValues)
     {
@@ -418,7 +418,7 @@ public partial class TestViewModel : ObservableObject
 
         foreach (var pair in compiledExpressions)
         {
-            var context = new ExpressionContext();
+            var context = new CommutationTable();
             long checksum = 0;
 
             var sw = Stopwatch.StartNew();
@@ -476,7 +476,7 @@ public partial class TestViewModel : ObservableObject
     }
 
     private static Dictionary<string, BoolInvokeBenchmarkResult> BenchmarkCompiledBoolInvocation(
-        IReadOnlyDictionary<string, Func<ExpressionContext, bool>> compiledExpressions,
+        IReadOnlyDictionary<string, Func<CommutationTable, bool>> compiledExpressions,
         double[] xValues,
         double[] yValues)
     {
@@ -485,7 +485,7 @@ public partial class TestViewModel : ObservableObject
 
         foreach (var pair in compiledExpressions)
         {
-            var context = new ExpressionContext();
+            var context = new CommutationTable();
             long trueCount = 0;
 
             var sw = Stopwatch.StartNew();
@@ -550,7 +550,7 @@ public partial class TestViewModel : ObservableObject
     }
 
     private static Dictionary<string, StringInvokeBenchmarkResult> BenchmarkCompiledStringInvocation(
-        IReadOnlyDictionary<string, Func<ExpressionContext, string>> compiledExpressions,
+        IReadOnlyDictionary<string, Func<CommutationTable, string>> compiledExpressions,
         double[] xValues,
         double[] yValues)
     {
@@ -559,7 +559,7 @@ public partial class TestViewModel : ObservableObject
 
         foreach (var pair in compiledExpressions)
         {
-            var context = new ExpressionContext();
+            var context = new CommutationTable();
             var hash = FnvOffsetBasis;
 
             var sw = Stopwatch.StartNew();
@@ -710,7 +710,7 @@ public partial class TestViewModel : ObservableObject
 
     private static Dictionary<string, StringChecksumComparisonResult> CompareStringChecksums(
         IReadOnlyList<string> expressions,
-        IReadOnlyDictionary<string, Func<ExpressionContext, string>> compiledExpressions,
+        IReadOnlyDictionary<string, Func<CommutationTable, string>> compiledExpressions,
         IReadOnlyDictionary<string, Func<double, double, string>> nativeExpressions,
         double[] xValues,
         double[] yValues)
@@ -722,7 +722,7 @@ public partial class TestViewModel : ObservableObject
         {
             var compiled = compiledExpressions[expression];
             var native = nativeExpressions[expression];
-            var context = new ExpressionContext();
+            var context = new CommutationTable();
             var compilerHash = FnvOffsetBasis;
             var nativeHash = FnvOffsetBasis;
             long mismatchCount = 0;
@@ -759,10 +759,10 @@ public partial class TestViewModel : ObservableObject
 
     private static Dictionary<string, ExpectedErrorValidationResult> ValidateExpectedErrors<T>(
         IReadOnlyList<string> expressions,
-        Func<string, Func<ExpressionContext, T>> compileFunc)
+        Func<string, Func<CommutationTable, T>> compileFunc)
     {
         var results = new Dictionary<string, ExpectedErrorValidationResult>(expressions.Count);
-        var context = new ExpressionContext
+        var context = new CommutationTable
         {
             x = 12.5,
             y = 4.25

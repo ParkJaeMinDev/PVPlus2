@@ -3,7 +3,7 @@ using BenchmarkDotNet.Running;
 using Flee.PublicTypes;
 using PVPlus2.Services;
 using System.Globalization;
-using CompilerContext = PVPlus2.Models.ExpressionContext;
+using CompilerContext = PVPlus2.Models.CommutationTable;
 using FleeContext = Flee.PublicTypes.ExpressionContext;
 
 BenchmarkSwitcher.FromTypes(new[]

@@ -2,7 +2,7 @@ using System.Globalization;
 using Flee.PublicTypes;
 using Xunit;
 using Xunit.Sdk;
-using CompilerContext = PVPlus2.Models.ExpressionContext;
+using CompilerContext = PVPlus2.Models.CommutationTable;
 using FleeContext = Flee.PublicTypes.ExpressionContext;
 
 namespace PVPlus2.Test;

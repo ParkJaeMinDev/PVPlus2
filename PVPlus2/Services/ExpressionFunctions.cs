@@ -52,13 +52,13 @@ internal static class ExpressionFunctions
 
     public static long Sign(double value) => Math.Sign(value);
 
-    public static bool ProductNameContains(ExpressionContext context, string s)
+    public static bool ProductNameContains(CommutationTable context, string s)
     {
         ArgumentNullException.ThrowIfNull(s);
         return (context.상품명 ?? string.Empty).Contains(s, StringComparison.Ordinal);
     }
 
-    public static bool RiderNameContains(ExpressionContext context, string s)
+    public static bool RiderNameContains(CommutationTable context, string s)
     {
         ArgumentNullException.ThrowIfNull(s);
         return (context.담보명 ?? string.Empty).Contains(s, StringComparison.Ordinal);

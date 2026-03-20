@@ -108,7 +108,13 @@ public class ExpressionCastTests
             "cast(x, float)",
             ExpressionCompiler.CompileLong,
             typeof(NotSupportedException),
-            "cast에서 지원하지 않는 타입입니다:");
+            "float/single은 지원하지 않습니다. double을 사용하세요.");
+
+        AssertCastFailure(
+            "cast(x, single)",
+            ExpressionCompiler.CompileLong,
+            typeof(NotSupportedException),
+            "float/single은 지원하지 않습니다. double을 사용하세요.");
 
         AssertCastFailure(
             "cast(x, foo)",
@@ -141,11 +147,11 @@ public class ExpressionCastTests
 
     private static void AssertCastFailure<T>(
         string expression,
-        Func<string, Func<ExpressionContext, T>> compiler,
+        Func<string, Func<CommutationTable, T>> compiler,
         Type expectedExceptionType,
         string expectedMessageFragment)
     {
-        Func<ExpressionContext, T>? compiled = null;
+        Func<CommutationTable, T>? compiled = null;
         Exception? actualException = null;
 
         try

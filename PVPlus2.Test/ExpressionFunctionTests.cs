@@ -141,7 +141,7 @@ public class ExpressionFunctionTests
     {
         var productMethod = GetExpressionFunction("ProductNameContains");
         var riderMethod = GetExpressionFunction("RiderNameContains");
-        var context = new ExpressionContext
+        var context = new CommutationTable
         {
             상품명 = "종신보험",
             담보명 = "암진단특약"
