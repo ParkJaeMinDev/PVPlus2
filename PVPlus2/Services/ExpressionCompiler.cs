@@ -1,3 +1,4 @@
+using FastExpressionCompiler;
 using Parlot.Fluent;
 using PVPlus2.Models;
 using System;
@@ -26,12 +27,19 @@ public class ExpressionCompiler
     private static readonly MethodInfo _stringConcatMethod =
         typeof(string).GetMethod(nameof(string.Concat), new[] { typeof(object), typeof(object) })!;
 
+    private static TDelegate CompileLambda<TDelegate>(Expression<TDelegate> lambda)
+        where TDelegate : Delegate
+    {
+        return lambda.CompileFast(ifFastFailedReturnNull: true) ?? lambda.Compile();
+    }
+
     public static Func<CommutationTable, double> CompileDouble(string text)
     {
         var body = BindExpression(text);
         body = ConvertReturnExpression(body, typeof(double));
 
-        return Expression.Lambda<Func<CommutationTable, double>>(body, _contextParameter).Compile();
+        var lambda = Expression.Lambda<Func<CommutationTable, double>>(body, _contextParameter);
+        return CompileLambda(lambda);
     }
 
     public static Func<CommutationTable, long> CompileLong(string text)
@@ -39,7 +47,8 @@ public class ExpressionCompiler
         var body = BindExpression(text);
         body = ConvertReturnExpression(body, typeof(long));
 
-        return Expression.Lambda<Func<CommutationTable, long>>(body, _contextParameter).Compile();
+        var lambda = Expression.Lambda<Func<CommutationTable, long>>(body, _contextParameter);
+        return CompileLambda(lambda);
     }
 
     public static Func<CommutationTable, bool> CompileBool(string text)
@@ -47,7 +56,8 @@ public class ExpressionCompiler
         var body = BindExpression(text);
         body = ConvertReturnExpression(body, typeof(bool));
 
-        return Expression.Lambda<Func<CommutationTable, bool>>(body, _contextParameter).Compile();
+        var lambda = Expression.Lambda<Func<CommutationTable, bool>>(body, _contextParameter);
+        return CompileLambda(lambda);
     }
 
     public static Func<CommutationTable, string> CompileString(string text)
@@ -55,7 +65,8 @@ public class ExpressionCompiler
         var body = BindExpression(text);
         body = ConvertReturnExpression(body, typeof(string));
 
-        return Expression.Lambda<Func<CommutationTable, string>>(body, _contextParameter).Compile();
+        var lambda = Expression.Lambda<Func<CommutationTable, string>>(body, _contextParameter);
+        return CompileLambda(lambda);
     }
 
     public static Action<CommutationTable, double[]> CompileDoubleArrayInto(string text)
@@ -128,10 +139,11 @@ public class ExpressionCompiler
 
         var block = Expression.Block(locals, blockExpressions);
 
-        return Expression.Lambda<Action<CommutationTable, double[]>>(
+        var lambda = Expression.Lambda<Action<CommutationTable, double[]>>(
             block,
             _contextParameter,
-            targetParameter).Compile();
+            targetParameter);
+        return CompileLambda(lambda);
     }
 
     public static Action<CommutationTable> CompileDoubleArrayAssignment(
@@ -153,9 +165,10 @@ public class ExpressionCompiler
         }
 
         var ctxParameter = Expression.Parameter(typeof(CommutationTable), "ctx");
-        var getter = Expression.Lambda<Func<CommutationTable, double[]>>(
+        var getterLambda = Expression.Lambda<Func<CommutationTable, double[]>>(
             Expression.Property(ctxParameter, property),
-            ctxParameter).Compile();
+            ctxParameter);
+        var getter = CompileLambda(getterLambda);
 
         return context => writer(context, getter(context));
     }
