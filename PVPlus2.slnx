@@ -1,5 +1,6 @@
 <Solution>
   <Project Path="PVPlus2.Benchmark/PVPlus2.Benchmark.csproj" Id="92889810-787c-4543-8c91-5b0e172ef2e5" />
+  <Project Path="PVPlus2.PlayGround/PVPlus2.PlayGround.csproj" Id="29b41d21-77da-4db0-ae36-1f0b2e30e52c" />
   <Project Path="PVPlus2.Test/PVPlus2.Test.csproj" Id="e00ce613-77f0-4f35-8b13-84610a9f6f84" />
   <Project Path="PVPlus2/PVPlus2.csproj" />
 </Solution>

@@ -7,7 +7,7 @@
 ## 1. 개요
 
 레거시 PVPlus의 `helper.cs`에 정의된 함수 중 현재 타입 시스템(`long`, `double`, `bool`, `string`)과
-ExpressionContext 주입 패턴으로 구현 가능한 함수를 선별하여 추가한다.
+CommutationTable 주입 패턴으로 구현 가능한 함수를 선별하여 추가한다.
 
 ### 타입 매핑 원칙
 - 레거시 `int` 파라미터 → `long` (PVPlus2 정수 타입)
@@ -156,6 +156,7 @@ public static double Average(params double[] values) => values.Average();
 | 시그니처 | 반환 | 비고 |
 |---|---|---|
 | `Choose(long index, params double[] items)` | `double` | 숫자 선택 |
+| `Choose(long index, params long[] items)` | `long` | 정수 선택 |
 | `Choose(long index, params string[] items)` | `string` | 문자열 선택 |
 
 **동작 정의**
@@ -174,6 +175,12 @@ public static double Choose(long index, params double[] items)
     return items[idx - 1];
 }
 
+public static long Choose(long index, params long[] items)
+{
+    int idx = Math.Max(Math.Min(checked((int)index), items.Length), 1);
+    return items[idx - 1];
+}
+
 public static string Choose(long index, params string[] items)
 {
     int idx = Math.Max(Math.Min(checked((int)index), items.Length), 1);
@@ -183,7 +190,7 @@ public static string Choose(long index, params string[] items)
 
 **레거시 대비 변경**
 - `int index` → `long index`
-- `Choose(int, params int[])` 오버로드 생략 (PVPlus2에서 int 없음, long 사용)
+- `Choose(int, params int[])` → `Choose(long, params long[])` (long 등가 오버로드로 이관)
 
 **경계 동작**
 - `index <= 0`: 첫 번째 항목 반환
@@ -277,11 +284,11 @@ public static long IndexOf(double item, params double[] items)
 |---|---|
 | `Ifs` | ExpressionCompiler에 내장 특수 함수로 이미 구현 |
 | `ToInt`, `ToDouble`, `ToString` | `cast()` 내장 함수로 대체 |
-| `RoundA` | ExpressionContext에 `Amount` 필드 추가 필요 — 별도 릴리스 |
-| `D`, `U` | ExpressionContext에 `t`, `S1` 변수 필요 — 별도 릴리스 |
-| `S` | ExpressionContext에 `Substandard_Mode` 필요 — 별도 릴리스 |
-| `AgeSign` | ExpressionContext에 `Age` 필요 — 별도 릴리스 |
-| `Renewal` | ExpressionContext에 `S1` 필요 — 별도 릴리스 |
+| `RoundA` | CommutationTable에 `Amount` 필드 추가 필요 — 별도 릴리스 |
+| `D`, `U` | CommutationTable에 `t`, `S1` 변수 필요 — 별도 릴리스 |
+| `S` | CommutationTable에 `Substandard_Mode` 필요 — 별도 릴리스 |
+| `AgeSign` | CommutationTable에 `Age` 필요 — 별도 릴리스 |
+| `Renewal` | CommutationTable에 `S1` 필요 — 별도 릴리스 |
 | `Ax`, `Xx`, `V`, `W` | PVCalculator 의존 — 현 단계 불가 |
 | `Pr`, `PrTerm`, `GP` | PVCalculator 의존 — 현 단계 불가 |
 | `EVal`, `Ex`, `FindQ` | PVCalculator / 외부 데이터 의존 — 현 단계 불가 |
@@ -355,11 +362,13 @@ Average(0, 10)   → 5.0
 ### 5.5 Choose
 
 ```
-Choose(1, 10, 20, 30)  → 10.0
-Choose(2, 10, 20, 30)  → 20.0
-Choose(0, 10, 20, 30)  → 10.0   // clamp 하한
-Choose(5, 10, 20, 30)  → 30.0   // clamp 상한
+Choose(1, 10, 20, 30)    → 10.0        // double 오버로드
+Choose(2, 10, 20, 30)    → 20.0
+Choose(0, 10, 20, 30)    → 10.0        // clamp 하한
+Choose(5, 10, 20, 30)    → 30.0        // clamp 상한
 Choose(2, "a", "b", "c") → "b"
+Choose(2, 10, 20, 30)    → 20          // long 오버로드 (정수 리터럴 → long 자동)
+Choose(0, 10, 20, 30)    → 10          // long, clamp 하한
 ```
 
 ### 5.6 Left / Right / Mid
@@ -398,9 +407,9 @@ PositiveMin()
 
 ---
 
-## 6. 미구현으로 남기는 함수 (향후 ExpressionContext 필드 확장 시)
+## 6. 미구현으로 남기는 함수 (향후 CommutationTable 필드 확장 시)
 
-ExpressionContext에 해당 필드가 추가되면 컨텍스트 주입 방식으로 구현 가능:
+CommutationTable에 해당 필드가 추가되면 컨텍스트 주입 방식으로 구현 가능:
 
 | 함수 | 필요 필드 |
 |---|---|
