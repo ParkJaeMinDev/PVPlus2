@@ -1,131 +1,237 @@
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
+using System.Linq;
 using PVPlus2.Models;
+using PVPlus2.Services;
 
 namespace PVPlus2.PlayGround;
 
 internal static class Program
 {
     private const int ScenarioN = 30;
-    private const int TotalCallCount = 100_000;
-    private const int BatchSize = 100;
-    private const int BatchCount = TotalCallCount / BatchSize;
+    private const int WarmupIterationCount = 1_000;
+    private const int MeasureIterationCount = 1_000;
     private static readonly double TimestampToNanoseconds = 1_000_000_000.0 / Stopwatch.Frequency;
     private static readonly string WorkspaceDirectory = Path.GetFullPath(
         Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
-    private static readonly string OutputPath = Path.Combine(WorkspaceDirectory, "GetCx_jit_trace_100_calls_codex.txt");
+    private static readonly string OutputPath = Path.Combine(
+        WorkspaceDirectory,
+        "DU_arity_special_function_benchmark_codex.csv");
+
     private static double _sink;
+
+    private sealed record BenchmarkDefinition(
+        string Name,
+        string DisplayText,
+        CommutationTable Context,
+        Func<BenchmarkExecutable> CreateExecutable);
+
+    private sealed record BenchmarkExecutable(
+        double CompileNanoseconds,
+        Action<CommutationTable, double[]> Action);
+
+    private sealed record BenchmarkResult(
+        string Name,
+        string DisplayText,
+        double CompileNanoseconds,
+        double TotalNanoseconds,
+        double NanosecondsPerInvocation,
+        double NanosecondsPerElement,
+        double Checksum);
 
     private static void Main()
     {
-        int size = (int)CommutationTable.MAXSIZE;
+        var benchmarks = CreateBenchmarkDefinitions()
+            .Select(RunBenchmark)
+            .ToArray();
 
-        CommutationTable table = new()
+        WriteResults(benchmarks);
+        PrintResults(benchmarks);
+    }
+
+    private static BenchmarkResult RunBenchmark(BenchmarkDefinition definition)
+    {
+        var executable = definition.CreateExecutable();
+        var target = new double[(int)CommutationTable.MAXSIZE];
+        double localSink = 0.0;
+
+        for (int i = 0; i < WarmupIterationCount; i++)
         {
-            n = ScenarioN,
-            Rate_이율 = CreateInterestRates(size),
-        };
-
-        InitializeDiscountArrays(table);
-
-        double[] rate = CreateRateInput(size);
-        double[] survivalRates = CreateSurvivalRates(size);
-        double[] lx = CreateLx(table, survivalRates, size);
-
-        string[] lines = new string[BatchCount];
+            executable.Action(definition.Context, target);
+            localSink += ConsumeTarget(target, definition.Context.n);
+        }
 
         GC.Collect();
         GC.WaitForPendingFinalizers();
         GC.Collect();
 
-        for (int batchIndex = 0; batchIndex < BatchCount; batchIndex++)
+        long measureStart = Stopwatch.GetTimestamp();
+
+        for (int i = 0; i < MeasureIterationCount; i++)
         {
-            long start = Stopwatch.GetTimestamp();
-
-            for (int i = 0; i < BatchSize; i++)
-            {
-                double[] cx = table.GetCx(lx, rate);
-                _sink += ComputeChecksum(cx, ScenarioN);
-                GC.KeepAlive(cx);
-            }
-
-            long elapsedTicks = Stopwatch.GetTimestamp() - start;
-            double totalNanoseconds = elapsedTicks * TimestampToNanoseconds;
-            double nanosecondsPerCall = totalNanoseconds / BatchSize;
-            int startCall = (batchIndex * BatchSize) + 1;
-            int endCall = startCall + BatchSize - 1;
-
-            lines[batchIndex] =
-                $"{batchIndex + 1},{startCall},{endCall},{elapsedTicks},{totalNanoseconds:F3},{nanosecondsPerCall:F3}";
+            executable.Action(definition.Context, target);
+            localSink += ConsumeTarget(target, definition.Context.n);
         }
+
+        long measureElapsedTicks = Stopwatch.GetTimestamp() - measureStart;
+        double totalNanoseconds = measureElapsedTicks * TimestampToNanoseconds;
+        double invocationCount = MeasureIterationCount;
+        double elementCount = MeasureIterationCount * (definition.Context.n + 1);
+
+        _sink += localSink;
+
+        return new BenchmarkResult(
+            definition.Name,
+            definition.DisplayText,
+            executable.CompileNanoseconds,
+            totalNanoseconds,
+            totalNanoseconds / invocationCount,
+            totalNanoseconds / elementCount,
+            localSink);
+    }
+
+    private static BenchmarkDefinition[] CreateBenchmarkDefinitions()
+    {
+        return
+        [
+            CreateExpressionBenchmark(
+                "D.one.special",
+                "D(0.5)",
+                CreateContext(s1: 0, age: 30)),
+            CreateExpressionBenchmark(
+                "D.one.if",
+                "if(S1 > 0 OR t >= 1, 1.0, 0.5)",
+                CreateContext(s1: 0, age: 30)),
+            CreateExpressionBenchmark(
+                "D.two.special",
+                "D(0.5, 0.75)",
+                CreateContext(s1: 0, age: 30)),
+            CreateExpressionBenchmark(
+                "D.two.if",
+                "if(S1 > 0 OR t >= 2, 1.0, if(t = 0, 0.5, 0.75))",
+                CreateContext(s1: 0, age: 30)),
+            CreateExpressionBenchmark(
+                "D.three.special",
+                "D(0.5, 0.75, 0.8)",
+                CreateContext(s1: 0, age: 30)),
+            CreateExpressionBenchmark(
+                "D.three.if",
+                "if(S1 > 0 OR t >= 3, 1.0, if(t = 0, 0.5, if(t = 1, 0.75, 0.8)))",
+                CreateContext(s1: 0, age: 30)),
+            CreateExpressionBenchmark(
+                "U.one.special",
+                "U(0.5)",
+                CreateContext(s1: 0, age: 30)),
+            CreateExpressionBenchmark(
+                "U.one.if",
+                "if(S1 > 0 OR Age < 15 OR t >= 1, 1.0, 0.5)",
+                CreateContext(s1: 0, age: 30)),
+            CreateExpressionBenchmark(
+                "U.two.special",
+                "U(0.5, 0.75)",
+                CreateContext(s1: 0, age: 30)),
+            CreateExpressionBenchmark(
+                "U.two.if",
+                "if(S1 > 0 OR Age < 15 OR t >= 2, 1.0, if(t = 0, 0.5, 0.75))",
+                CreateContext(s1: 0, age: 30)),
+            CreateExpressionBenchmark(
+                "U.three.special",
+                "U(0.5, 0.75, 0.8)",
+                CreateContext(s1: 0, age: 30)),
+            CreateExpressionBenchmark(
+                "U.three.if",
+                "if(S1 > 0 OR Age < 15 OR t >= 3, 1.0, if(t = 0, 0.5, if(t = 1, 0.75, 0.8)))",
+                CreateContext(s1: 0, age: 30)),
+        ];
+    }
+
+    private static BenchmarkDefinition CreateExpressionBenchmark(
+        string name,
+        string expressionText,
+        CommutationTable context)
+    {
+        return new BenchmarkDefinition(
+            name,
+            expressionText,
+            context,
+            () =>
+            {
+                long compileStart = Stopwatch.GetTimestamp();
+                var action = ExpressionCompiler.CompileDoubleArrayInto(expressionText);
+                long compileElapsedTicks = Stopwatch.GetTimestamp() - compileStart;
+                double compileNanoseconds = compileElapsedTicks * TimestampToNanoseconds;
+                return new BenchmarkExecutable(compileNanoseconds, action);
+            });
+    }
+
+    private static CommutationTable CreateContext(long s1, long age)
+    {
+        return new CommutationTable
+        {
+            n = ScenarioN,
+            S1 = s1,
+            Age = age
+        };
+    }
+
+    private static double ConsumeTarget(double[] target, long n)
+    {
+        int last = (int)n;
+        return target[0] + target[1] + target[2] + target[last];
+    }
+
+    private static void WriteResults(IEnumerable<BenchmarkResult> results)
+    {
+        var lines = new List<string>
+        {
+            "Name,Expression,CompileNs,TotalNs,NsPerInvocation,NsPerElement,Checksum"
+        };
+
+        lines.AddRange(results.Select(result =>
+            string.Join(",",
+                EscapeCsv(result.Name),
+                EscapeCsv(result.DisplayText),
+                result.CompileNanoseconds.ToString("F3"),
+                result.TotalNanoseconds.ToString("F3"),
+                result.NanosecondsPerInvocation.ToString("F3"),
+                result.NanosecondsPerElement.ToString("F6"),
+                result.Checksum.ToString("R"))));
 
         File.WriteAllLines(OutputPath, lines);
-
-        Console.WriteLine("GetCx JIT Trace (100-call batches)");
-        Console.WriteLine($"n                 : {ScenarioN}");
-        Console.WriteLine($"total calls       : {TotalCallCount:N0}");
-        Console.WriteLine($"batch size        : {BatchSize:N0}");
-        Console.WriteLine($"batch count       : {BatchCount:N0}");
-        Console.WriteLine($"timer frequency   : {Stopwatch.Frequency:N0} ticks/sec");
-        Console.WriteLine($"output            : {OutputPath}");
-        Console.WriteLine($"checksum sink     : {_sink:R}");
     }
 
-    private static double[] CreateInterestRates(int size)
+    private static void PrintResults(IEnumerable<BenchmarkResult> results)
     {
-        double[] interestRates = new double[size];
+        Console.WriteLine("D/U Arity Special Function Benchmark");
+        Console.WriteLine($"n                   : {ScenarioN}");
+        Console.WriteLine($"warmup iterations   : {WarmupIterationCount:N0}");
+        Console.WriteLine($"measure iterations  : {MeasureIterationCount:N0}");
+        Console.WriteLine($"timer frequency     : {Stopwatch.Frequency:N0} ticks/sec");
+        Console.WriteLine($"output              : {OutputPath}");
+        Console.WriteLine();
 
-        for (int i = 0; i < interestRates.Length; i++)
+        foreach (var result in results)
         {
-            interestRates[i] = 0.0200 + ((i % 10) * 0.0010);
+            Console.WriteLine(result.Name);
+            Console.WriteLine($"  expr/call         : {result.DisplayText}");
+            Console.WriteLine($"  compile ns        : {result.CompileNanoseconds:F3}");
+            Console.WriteLine($"  total ns          : {result.TotalNanoseconds:F3}");
+            Console.WriteLine($"  ns / invocation   : {result.NanosecondsPerInvocation:F3}");
+            Console.WriteLine($"  ns / element      : {result.NanosecondsPerElement:F6}");
         }
 
-        return interestRates;
+        Console.WriteLine();
+        Console.WriteLine($"checksum sink       : {_sink:R}");
     }
 
-    private static void InitializeDiscountArrays(CommutationTable table)
+    private static string EscapeCsv(string value)
     {
-        for (int i = 0; i < table.Rate_할인율.Length; i++)
+        if (!value.Contains(',') && !value.Contains('"'))
         {
-            table.Rate_할인율[i] = 1.0 / (1.0 + table.Rate_이율[i]);
+            return value;
         }
 
-        table.FillPrefixProducts(table.Rate_할인율, table.Rate_할인율누계);
-        table.FillPrefixProducts_Cx(table.Rate_할인율, table.Rate_할인율누계_Cx);
-    }
-
-    private static double[] CreateRateInput(int size)
-    {
-        double[] rate = new double[size];
-
-        for (int i = 0; i < rate.Length; i++)
-        {
-            rate[i] = 0.0010 + ((i % 9) * 0.0001);
-        }
-
-        return rate;
-    }
-
-    private static double[] CreateSurvivalRates(int size)
-    {
-        double[] survivalRates = new double[size];
-
-        for (int i = 0; i < survivalRates.Length; i++)
-        {
-            survivalRates[i] = 0.9950 + ((i % 10) * 0.0001);
-        }
-
-        return survivalRates;
-    }
-
-    private static double[] CreateLx(CommutationTable table, double[] survivalRates, int size)
-    {
-        double[] lx = new double[size];
-        table.FillLx(survivalRates, lx);
-        return lx;
-    }
-
-    private static double ComputeChecksum(double[] cx, int count)
-    {
-        return cx[0] + cx[count / 2] + cx[count - 1];
+        return $"\"{value.Replace("\"", "\"\"")}\"";
     }
 }

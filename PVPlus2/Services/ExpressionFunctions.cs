@@ -52,6 +52,16 @@ internal static class ExpressionFunctions
 
     public static long Sign(double value) => Math.Sign(value);
 
+    public static bool Renewal(CommutationTable context)
+    {
+        return context.S1 > 0;
+    }
+
+    public static long AgeSign(CommutationTable context, long t)
+    {
+        return context.Age < t ? 0 : 1;
+    }
+
     public static bool ProductNameContains(CommutationTable context, string s)
     {
         ArgumentNullException.ThrowIfNull(s);

@@ -494,6 +494,18 @@ public class ExpressionCompiler
             return true;
         }
 
+        if (string.Equals(functionName, "D", StringComparison.OrdinalIgnoreCase))
+        {
+            expression = CreateDExpression(rawArguments, bind);
+            return true;
+        }
+
+        if (string.Equals(functionName, "U", StringComparison.OrdinalIgnoreCase))
+        {
+            expression = CreateUExpression(rawArguments, bind);
+            return true;
+        }
+
         expression = null;
         return false;
     }
@@ -566,6 +578,118 @@ public class ExpressionCompiler
         var targetType = ResolveCastTargetType(arguments[1]);
 
         return ConvertCastExpression(valueExpression, targetType);
+    }
+
+    private static Expression CreateDExpression(
+        IReadOnlyList<AstNode> arguments,
+        Func<AstNode, Expression> bind)
+    {
+        try
+        {
+            _ = bind(new IdentifierNode("t"));
+        }
+        catch (InvalidOperationException ex)
+        {
+            throw new InvalidOperationException("'D' is only valid inside array expressions.", ex);
+        }
+
+        if (arguments.Count == 0)
+        {
+            throw new FormatException("D requires at least one argument.");
+        }
+
+        var rewritten = CreateIfFunctionNode(
+            CreateBinaryNode(
+                BinaryOperator.Or,
+                CreateBinaryNode(
+                    BinaryOperator.GreaterThan,
+                    new IdentifierNode("S1"),
+                    new NumberLiteralNode(0L)),
+                CreateBinaryNode(
+                    BinaryOperator.GreaterThanOrEqual,
+                    new IdentifierNode("t"),
+                    new NumberLiteralNode((long)arguments.Count))),
+            new NumberLiteralNode(1.0),
+            CreateIndexedIfAst(arguments));
+
+        return bind(rewritten);
+    }
+
+    private static Expression CreateUExpression(
+        IReadOnlyList<AstNode> arguments,
+        Func<AstNode, Expression> bind)
+    {
+        try
+        {
+            _ = bind(new IdentifierNode("t"));
+        }
+        catch (InvalidOperationException ex)
+        {
+            throw new InvalidOperationException("'U' is only valid inside array expressions.", ex);
+        }
+
+        if (arguments.Count == 0)
+        {
+            throw new FormatException("U requires at least one argument.");
+        }
+
+        var rewritten = CreateIfFunctionNode(
+            CreateBinaryNode(
+                BinaryOperator.Or,
+                CreateBinaryNode(
+                    BinaryOperator.Or,
+                    CreateBinaryNode(
+                        BinaryOperator.GreaterThan,
+                        new IdentifierNode("S1"),
+                        new NumberLiteralNode(0L)),
+                    CreateBinaryNode(
+                        BinaryOperator.LessThan,
+                        new IdentifierNode("Age"),
+                        new NumberLiteralNode(15L))),
+                CreateBinaryNode(
+                    BinaryOperator.GreaterThanOrEqual,
+                    new IdentifierNode("t"),
+                    new NumberLiteralNode((long)arguments.Count))),
+            new NumberLiteralNode(1.0),
+            CreateIndexedIfAst(arguments));
+
+        return bind(rewritten);
+    }
+
+    private static AstNode CreateIndexedIfAst(IReadOnlyList<AstNode> arguments)
+    {
+        AstNode result = arguments[^1];
+
+        for (int i = arguments.Count - 2; i >= 0; i--)
+        {
+            result = CreateIfFunctionNode(
+                CreateBinaryNode(
+                    BinaryOperator.Equal,
+                    new IdentifierNode("t"),
+                    new NumberLiteralNode((long)i)),
+                arguments[i],
+                result);
+        }
+
+        return result;
+    }
+
+    private static FunctionCallNode CreateIfFunctionNode(
+        AstNode condition,
+        AstNode trueExpression,
+        AstNode falseExpression)
+    {
+        return new FunctionCallNode(
+            "if",
+            new AstNode[] { condition, trueExpression, falseExpression });
+    }
+
+    private static BinaryNode CreateBinaryNode(
+        BinaryOperator op,
+        AstNode left,
+        AstNode right)
+    {
+        return new BinaryNode(op, left, right);
     }
 
     private static Type ResolveCastTargetType(AstNode rawTypeArgument)

@@ -128,6 +128,105 @@ public class ExpressionArrayTests
     }
 
     [Fact]
+    public void CompileDoubleArrayInto_Supports_D_Per_Element_Up_To_N()
+    {
+        var expression = ExpressionCompiler.CompileDoubleArrayInto("D(0.5, 0.75)");
+        var context = CreateArrayContext(n: 5);
+        var target = new double[MaxSize];
+
+        expression(context, target);
+
+        AssertComputedPrefixAndZeroTail(
+            target,
+            context.n,
+            i => i switch
+            {
+                0 => 0.5d,
+                1 => 0.75d,
+                _ => 1d
+            },
+            "Unexpected result for D(...) array expression.");
+    }
+
+    [Fact]
+    public void CompileDoubleArrayInto_D_Returns_One_When_Renewal_Is_Active()
+    {
+        var expression = ExpressionCompiler.CompileDoubleArrayInto("D(0.5, 0.75)");
+        var context = CreateArrayContext(n: 5);
+        var target = new double[MaxSize];
+
+        context.S1 = 1;
+
+        expression(context, target);
+
+        AssertComputedPrefixAndZeroTail(
+            target,
+            context.n,
+            _ => 1d,
+            "Unexpected result for D(...) renewal guard.");
+    }
+
+    [Fact]
+    public void CompileDoubleArrayInto_Rejects_Empty_D_Call()
+    {
+        var exception = Assert.Throws<FormatException>(() =>
+            ExpressionCompiler.CompileDoubleArrayInto("D()"));
+
+        Assert.Contains("잘못된 수식입니다: D()", exception.Message);
+    }
+
+    [Fact]
+    public void CompileDoubleArrayInto_Supports_U_Per_Element_When_Age_Is_At_Least_15()
+    {
+        var expression = ExpressionCompiler.CompileDoubleArrayInto("U(0.5, 0.75, 0.8)");
+        var context = CreateArrayContext(n: 5);
+        var target = new double[MaxSize];
+
+        context.Age = 15;
+
+        expression(context, target);
+
+        AssertComputedPrefixAndZeroTail(
+            target,
+            context.n,
+            i => i switch
+            {
+                0 => 0.5d,
+                1 => 0.75d,
+                2 => 0.8d,
+                _ => 1d
+            },
+            "Unexpected result for U(...) array expression.");
+    }
+
+    [Fact]
+    public void CompileDoubleArrayInto_U_Returns_One_When_Age_Is_Below_15()
+    {
+        var expression = ExpressionCompiler.CompileDoubleArrayInto("U(0.5, 0.75)");
+        var context = CreateArrayContext(n: 5);
+        var target = new double[MaxSize];
+
+        context.Age = 14;
+
+        expression(context, target);
+
+        AssertComputedPrefixAndZeroTail(
+            target,
+            context.n,
+            _ => 1d,
+            "Unexpected result for U(...) age guard.");
+    }
+
+    [Fact]
+    public void CompileDoubleArrayInto_Rejects_Empty_U_Call()
+    {
+        var exception = Assert.Throws<FormatException>(() =>
+            ExpressionCompiler.CompileDoubleArrayInto("U()"));
+
+        Assert.Contains("잘못된 수식입니다: U()", exception.Message);
+    }
+
+    [Fact]
     public void CompileDoubleArrayInto_Computes_All_Elements_When_N_Is_MaxSizeMinusOne()
     {
         var expression = ExpressionCompiler.CompileDoubleArrayInto("1");
@@ -217,6 +316,22 @@ public class ExpressionArrayTests
         var exception = Assert.Throws<InvalidOperationException>(() => ExpressionCompiler.CompileDouble("t"));
 
         Assert.Contains("'t' is only valid inside array expressions.", exception.Message);
+    }
+
+    [Fact]
+    public void CompileDouble_Rejects_D_Outside_Array_Expressions()
+    {
+        var exception = Assert.Throws<InvalidOperationException>(() => ExpressionCompiler.CompileDouble("D(0.5, 0.75)"));
+
+        Assert.Contains("'D' is only valid inside array expressions.", exception.Message);
+    }
+
+    [Fact]
+    public void CompileDouble_Rejects_U_Outside_Array_Expressions()
+    {
+        var exception = Assert.Throws<InvalidOperationException>(() => ExpressionCompiler.CompileDouble("U(0.5, 0.75)"));
+
+        Assert.Contains("'U' is only valid inside array expressions.", exception.Message);
     }
 
     private static CommutationTable CreateArrayContext(long n)
